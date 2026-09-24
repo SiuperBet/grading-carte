@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stima Grado Carte</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f2f2f4;--ok:#1a8a3a;--bad:#c0392b;--warn:#fff3cd;--warnfg:#5a4500;--acc:#2f5fd0}
+@media(prefers-color-scheme:dark){:root{--bg:#121316;--fg:#eee;--card:#22242a;--warn:#3d3410;--warnfg:#f3e2a0;--acc:#7fa2ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;padding:0 14px 40px;max-width:520px;margin-inline:auto}
+h1{font-size:1.3rem;margin:14px 0 6px}
+.avviso{background:var(--warn);color:var(--warnfg);padding:8px 10px;border-radius:8px;font-size:.85rem;margin-bottom:12px}
+button{font:inherit;padding:12px 16px;border-radius:10px;border:0;background:var(--acc);color:#fff;width:100%;margin-top:8px}
+button.sec{background:var(--card);color:var(--fg)}
+.box{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:3/4}
+video{width:100%;height:100%;object-fit:cover}
+.guida{position:absolute;inset:0;margin:auto;height:84%;aspect-ratio:63/88;border:3px dashed rgba(255,255,255,.85);border-radius:10px;pointer-events:none}
+.chips{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}
+.chip{background:var(--card);padding:6px 10px;border-radius:99px;font-size:.85rem}
+.chip.ok{color:var(--ok)}.chip.bad{color:var(--bad)}
+.msg{background:var(--card);padding:10px;border-radius:8px;margin-top:8px;font-size:.92rem}
+.prog{font-size:.85rem;opacity:.75}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid div{background:var(--card);border-radius:8px;padding:6px;font-size:.8rem}
+.grid img{width:100%;border-radius:6px;display:block}
+.pan{background:var(--card);border-radius:10px;padding:8px;margin-top:10px}
+.pan canvas,#ov{width:100%;border-radius:6px;display:block}
+.pan label{display:block;font-size:.85rem;margin-top:6px}
+.pan input[type=range]{width:100%}
+.ris{font-size:1.1rem;font-weight:600}
+.wrap{position:relative;margin-top:8px}
+.tt{touch-action:none;width:100%;display:block;border-radius:8px}
+.lp{position:absolute;width:120px;height:120px;border:3px solid #0f0;border-radius:50%;display:none;pointer-events:none;background:#000}
+.chb{width:auto;display:inline-block;padding:6px 10px;font-size:.8rem;margin:3px 3px 0 0}
+.cur{outline:2px solid var(--acc)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<h1>Stima Grado Carte</h1>
+<div class="avviso">Questa è una <b>stima</b>, non un grading ufficiale. Le foto restano sul tuo telefono: non vengono inviate a nessuno.</div>
+
+<div id="start">
+  <p>Fase 3: ti guido nello scattare 11 foto della carta. Ad ogni foto controllo nitidezza, luce e riflessi. Se non va bene, ti chiedo di rifarla.</p>
+  <button id="btnStart">Inizia (attiva la fotocamera)</button>
+  <button class="sec hide" id="fbl" type="button" onclick="document.getElementById('file').click()">Camera non disponibile? Scegli una foto</button>
+  <input id="file" type="file" accept="image/*" capture="environment" class="hide">
+  <button class="sec" type="button" onclick="document.getElementById('fileC').click()">Solo centratura: scegli una foto dalla galleria</button>
+  <input id="fileC" type="file" accept="image/*" class="hide">
+</div>
+
+<div id="cap" class="hide">
+  <div class="prog" id="prog"></div>
+  <h2 id="titolo" style="margin:4px 0"></h2>
+  <div id="hint"></div>
+  <div class="box"><video id="v" playsinline muted autoplay></video><div class="guida"></div></div>
+  <div class="chips" id="chips"></div>
+  <div class="msg hide" id="msg"></div>
+  <button id="btnShot">Scatta</button>
+</div>
+
+<div id="fine" class="hide">
+  <h2>Foto raccolte</h2>
+  <p>Controlla le miniature. Puoi rifare quelle che non ti convincono.</p>
+  <div class="grid" id="grid"></div>
+  <button onclick="apriCent(foto[0])">Misura centratura del fronte</button>
+  <button class="sec" onclick="apriCent(foto[1])">Misura centratura del retro</button>
+  <div class="msg">Angoli, bordi e superficie arrivano nelle prossime fasi.</div>
+</div>
+
+<div id="cent" class="hide">
+  <h2 style="margin:4px 0">Centratura</h2>
+
+  <div id="stA">
+    <div class="msg"><b>Passo 1 · Raddrizza la carta.</b> Tocca e trascina sull'angolo indicato: appare una lente che ingrandisce il punto. Rilascia per confermare. Punta dove i due bordi dritti si incontrerebbero, anche se l'angolo è arrotondato. Per scorrere la pagina, tocca fuori dalla foto.</div>
+    <label style="display:block;margin-top:8px">Tipo di carta
+      <select id="gioco" style="font:inherit;padding:6px"><option value="63,88">Pokémon (63×88 mm)</option><option value="59,86">Yu-Gi-Oh (59×86 mm)</option></select>
+    </label>
+    <div id="chA"></div>
+    <p id="hA" class="prog"></p>
+    <div class="wrap"><canvas id="ca" class="tt"></canvas><canvas id="lpa" class="lp" width="240" height="240"></canvas></div>
+    <button id="btnR" onclick="raddrizza()">Raddrizza</button>
+    <button class="sec" onclick="RC=WK;LN={};TB=0;vaiB()">Uso la foto così com'è (già dritta e ritagliata)</button>
+  </div>
+
+  <div id="stB" class="hide">
+    <div class="msg"><b>Passo 2 · Segna i bordi</b>, uno alla volta. Tocca e trascina: la linea segue il dito e la lente ingrandisce. Rilascia per confermare. <b style="color:#d33">Rosso</b> = bordo della carta. <b style="color:#38f">Blu</b> = dove finisce il bordo stampato (es. il giallo dei Pokémon) e inizia il disegno. Puoi toccare un nome nell'elenco per rifare quella linea.</div>
+    <div id="chB"></div>
+    <p id="hB" class="prog"></p>
+    <div class="wrap"><canvas id="cb" class="tt"></canvas><canvas id="lpb" class="lp" width="240" height="240"></canvas></div>
+    <div class="msg">Ritocco fine della linea selezionata (1 punto per volta):
+      <canvas id="zb" style="width:100%;border-radius:6px;margin-top:6px"></canvas>
+      <div style="display:flex;gap:8px"><button class="sec" id="nl" onclick="nudge(-1)">◀</button><button class="sec" id="nr" onclick="nudge(1)">▶</button></div>
+    </div>
+    <div class="msg" id="ris"></div>
+    <button class="sec" onclick="vaiA()">Rifai gli angoli</button>
+  </div>
+
+  <button class="sec" onclick="esciCent()">Indietro</button>
+</div>
+
+<script>
+const STEPS=[
+ {t:'Fronte',h:'Carta intera, dritta, dentro il rettangolo tratteggiato.',g:1},
+ {t:'Retro',h:'Gira la carta. Intera, dritta, dentro il rettangolo.',g:1},
+ {t:'Angolo alto-sinistra (fronte)',h:'Avvicinati: l\u2019angolo deve riempire l\u2019inquadratura.',g:1},
+ {t:'Angolo alto-destra (fronte)',h:'Avvicinati all\u2019angolo.',g:1},
+ {t:'Angolo basso-sinistra (fronte)',h:'Avvicinati all\u2019angolo.',g:1},
+ {t:'Angolo basso-destra (fronte)',h:'Avvicinati all\u2019angolo.',g:1},
+ {t:'Bordo alto',h:'Tieni la carta di taglio o inclinata, per vedere il bordo superiore.',g:1},
+ {t:'Bordo basso',h:'Come prima, per il bordo inferiore.',g:1},
+ {t:'Bordo sinistro',h:'Come prima, per il bordo sinistro.',g:1},
+ {t:'Bordo destro',h:'Come prima, per il bordo destro.',g:1},
+ {t:'Luce inclinata',h:'Inclina la carta sotto una lampada: qui i riflessi sono voluti e servono a vedere graffi e pieghe.',g:0}
+];
+// SOGLIE PROVVISORIE: da tarare sul tuo telefono
+const TH={buioMax:70,chiaroMax:200,nitidMin:40,abbagl:0.02};
+const $=id=>document.getElementById(id);
+const foto=[];let i=0,stream=null,timer=null,riprendi=null;
+const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});
+
+function analizza(src,w,h){
+  const W=320,H=Math.round(W*h/w);cv.width=W;cv.height=H;cx.drawImage(src,0,0,W,H);
+  const d=cx.getImageData(0,0,W,H).data,g=new Float32Array(W*H);let s=0,ab=0;
+  for(let p=0;p<W*H;p++){const r=d[p*4],gg=d[p*4+1],b=d[p*4+2];g[p]=.299*r+.587*gg+.114*b;s+=g[p];if(r>=250&&gg>=250&&b>=250)ab++}
+  let ls=0,lq=0,n=0;
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const p=y*W+x,l=4*g[p]-g[p-1]-g[p+1]-g[p-W]-g[p+W];ls+=l;lq+=l*l;n++}
+  const m=ls/n;
+  return{luce:s/(W*H),nitid:lq/n-m*m,abb:ab/(W*H)};
+}
+function verifica(a,step){
+  const p=[];
+  if(a.luce<TH.buioMax)p.push('Troppo buio: avvicinati a una luce.');
+  if(a.luce>TH.chiaroMax)p.push('Troppo chiaro: riduci la luce diretta.');
+  if(a.nitid<TH.nitidMin)p.push('Foto sfocata: tieni fermo il telefono e aspetta la messa a fuoco.');
+  if(step.g&&a.abb>TH.abbagl)p.push('Riflessi forti: cambia angolo o spegni la luce che si specchia.');
+  return p;
+}
+function chips(a,step){
+  const c=(ok,t)=>`<span class="chip ${ok?'ok':'bad'}">${ok?'✓':'✗'} ${t}</span>`;
+  $('chips').innerHTML=c(a.luce>=TH.buioMax&&a.luce<=TH.chiaroMax,'Luce '+a.luce.toFixed(0))+
+   c(a.nitid>=TH.nitidMin,'Nitidezza '+a.nitid.toFixed(0))+
+   (step.g?c(a.abb<=TH.abbagl,'Riflessi '+(a.abb*100).toFixed(1)+'%'):'<span class="chip">Riflessi: non richiesti</span>');
+}
+function mostraStep(){
+  const s=STEPS[i];$('prog').textContent='Foto '+(i+1)+' di '+STEPS.length;
+  $('titolo').textContent=s.t;$('hint').textContent=s.h;$('msg').classList.add('hide');
+}
+function loopLive(){
+  clearInterval(timer);
+  timer=setInterval(()=>{const v=$('v');if(v.videoWidth)chips(analizza(v,v.videoWidth,v.videoHeight),STEPS[i])},400);
+}
+async function apriCamera(){
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+  $('v').srcObject=stream;loopLive();
+}
+async function avvia(){
+  try{
+    await apriCamera();
+    $('start').classList.add('hide');$('cap').classList.remove('hide');mostraStep();
+  }catch(e){
+    $('start').insertAdjacentHTML('beforeend','<div class="msg">Non riesco ad aprire la fotocamera ('+e.name+'). Controlla i permessi del browser, oppure usa il pulsante per scegliere una foto.</div>');
+    $('fbl').classList.remove('hide');
+  }
+}
+function salva(url){
+  foto[i]=url;
+  if(riprendi!==null){riprendi=null;fine()}
+  else{i++;if(i>=STEPS.length)fine();else mostraStep()}
+}
+function scatta(){
+  const v=$('v'),s=STEPS[i],a=analizza(v,v.videoWidth,v.videoHeight),p=verifica(a,s);
+  if(p.length){const m=$('msg');m.innerHTML='<b>Rifai la foto.</b><br>'+p.join('<br>');m.classList.remove('hide');return}
+  const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
+  salva(c.toDataURL('image/jpeg',.92));
+}
+function fine(){
+  clearInterval(timer);if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  $('start').classList.add('hide');$('cap').classList.add('hide');$('fine').classList.remove('hide');
+  $('grid').innerHTML=STEPS.map((s,k)=>foto[k]?`<div><img src="${foto[k]}"><b>${s.t}</b><br><a href="#" onclick="rifai(${k});return false">Rifai</a></div>`:`<div><b>${s.t}</b><br>non scattata</div>`).join('');
+}
+async function rifai(k){
+  i=k;riprendi=k;$('fine').classList.add('hide');$('cap').classList.remove('hide');mostraStep();
+  try{await apriCamera()}catch(e){$('msg').textContent='Fotocamera non disponibile ('+e.name+').';$('msg').classList.remove('hide')}
+}
+// ---- FASE 4 (v2): raddrizzamento + centratura con tocco e lente ----
+const PX=12; // punti per mm nella carta raddrizzata
+let WK=null,PTS=[null,null,null,null],TG=0,RC=null,LN={},TB=0,DIM={w:63,h:88};
+const CORN=['alto sinistra','alto destra','basso destra','basso sinistra'];
+const TARGETS=[
+ {k:'xo1',n:'Sinistra: bordo carta',ax:'x',c:'#e33'},
+ {k:'xi1',n:'Sinistra: fine bordo stampato',ax:'x',c:'#38f'},
+ {k:'xi2',n:'Destra: fine bordo stampato',ax:'x',c:'#38f'},
+ {k:'xo2',n:'Destra: bordo carta',ax:'x',c:'#e33'},
+ {k:'yo1',n:'Alto: bordo carta',ax:'y',c:'#e33'},
+ {k:'yi1',n:'Alto: fine bordo stampato',ax:'y',c:'#38f'},
+ {k:'yi2',n:'Basso: fine bordo stampato',ax:'y',c:'#38f'},
+ {k:'yo2',n:'Basso: bordo carta',ax:'y',c:'#e33'}
+];
+
+function loupe(id,cv,src,sx,sy,ax,cx,cy){
+  const L=$(id),c=L.getContext('2d'),S=.06*Math.max(src.width,src.height);
+  c.clearRect(0,0,240,240);c.drawImage(src,sx-S/2,sy-S/2,S,S,0,0,240,240);
+  c.strokeStyle='#0f0';c.lineWidth=2;c.beginPath();
+  if(ax!=='y'){c.moveTo(120,0);c.lineTo(120,240)}
+  if(ax!=='x'){c.moveTo(0,120);c.lineTo(240,120)}
+  c.stroke();
+  const rw=cv.getBoundingClientRect().width;
+  const left=Math.min(Math.max(cx-60,0),rw-120);let top=cy-190;if(top<0)top=cy+60;
+  L.style.left=left+'px';L.style.top=top+'px';L.style.display='block';
+}
+function tocco(cv,lp,fn,fine){
+  let on=false;
+  const P=e=>{const r=cv.getBoundingClientRect();return{cx:e.clientX-r.left,cy:e.clientY-r.top,x:(e.clientX-r.left)/r.width*cv.width,y:(e.clientY-r.top)/r.height*cv.height}};
+  cv.onpointerdown=e=>{on=true;cv.setPointerCapture(e.pointerId);fn(P(e))};
+  cv.onpointermove=e=>{if(on)fn(P(e))};
+  const end=()=>{if(!on)return;on=false;$(lp).style.display='none';fine()};
+  cv.onpointerup=end;cv.onpointercancel=end;
+}
+
+function apriCent(url){
+  if(!url){alert('Questa foto non c\u2019è ancora.');return}
+  const im=new Image();
+  im.onload=()=>{
+    const s=Math.min(1,2400/Math.max(im.naturalWidth,im.naturalHeight));
+    WK=document.createElement('canvas');WK.width=Math.round(im.naturalWidth*s);WK.height=Math.round(im.naturalHeight*s);
+    WK.getContext('2d').drawImage(im,0,0,WK.width,WK.height);
+    PTS=[null,null,null,null];TG=0;LN={};TB=0;
+    ['start','fine','cap'].forEach(x=>$(x).classList.add('hide'));$('cent').classList.remove('hide');
+    vaiA();
+  };
+  im.src=url;
+}
+function esciCent(){
+  $('cent').classList.add('hide');
+  if(foto.length)$('fine').classList.remove('hide');else $('start').classList.remove('hide');
+}
+
+// ---------- Passo 1: angoli ----------
+function vaiA(){
+  $('stA').classList.remove('hide');$('stB').classList.add('hide');
+  const ca=$('ca');ca.width=Math.min(WK.width,1000);ca.height=Math.round(ca.width*WK.height/WK.width);
+  tocco(ca,'lpa',p=>{
+    const d=WK.width/ca.width;PTS[TG]={x:p.x*d,y:p.y*d};dA();
+    loupe('lpa',ca,WK,PTS[TG].x,PTS[TG].y,'xy',p.cx,p.cy);
+  },()=>{const n=PTS.findIndex(q=>!q);if(n>=0)TG=n;dA()});
+  dA();
+}
+function dA(){
+  const ca=$('ca'),c=ca.getContext('2d'),d=ca.width/WK.width;
+  c.drawImage(WK,0,0,ca.width,ca.height);
+  const q=PTS.map(p=>p&&{x:p.x*d,y:p.y*d});
+  c.strokeStyle='#0f0';c.lineWidth=2;c.beginPath();
+  q.forEach((p,i)=>{if(!p)return;if(i>0&&q[i-1])c.lineTo(p.x,p.y);else c.moveTo(p.x,p.y)});
+  if(q.every(Boolean))c.closePath();
+  c.stroke();
+  q.forEach((p,i)=>{
+    if(!p)return;
+    c.fillStyle=i===TG?'#ff0':'#0f0';c.beginPath();c.arc(p.x,p.y,6,0,7);c.fill();
+    c.font='bold 16px sans-serif';c.lineWidth=3;c.strokeStyle='#000';c.strokeText(i+1,p.x+9,p.y-9);c.fillStyle='#fff';c.fillText(i+1,p.x+9,p.y-9);
+  });
+  $('chA').innerHTML=CORN.map((n,i)=>`<button class="sec chb ${i===TG?'cur':''}" onclick="TG=${i};dA()">${PTS[i]?'✓ ':''}${i+1} ${n}</button>`).join('');
+  $('hA').textContent=PTS.every(Boolean)?'Controlla i 4 punti, poi tocca "Raddrizza". Puoi correggerne uno toccando il suo nome.':'Ora: angolo '+(TG+1)+' ('+CORN[TG]+').';
+  $('btnR').disabled=!PTS.every(Boolean);
+}
+function omografia(dst,src){
+  const A=[],b=[];
+  for(let i=0;i<4;i++){
+    const x=dst[i].x,y=dst[i].y,u=src[i].x,v=src[i].y;
+    A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);
+    A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v);
+  }
+  for(let i=0;i<8;i++){
+    let m=i;for(let r=i+1;r<8;r++)if(Math.abs(A[r][i])>Math.abs(A[m][i]))m=r;
+    if(Math.abs(A[m][i])<1e-9)return null;
+    [A[i],A[m]]=[A[m],A[i]];[b[i],b[m]]=[b[m],b[i]];
+    for(let r=0;r<8;r++)if(r!==i){const f=A[r][i]/A[i][i];for(let k=i;k<8;k++)A[r][k]-=f*A[i][k];b[r]-=f*b[i]}
+  }
+  return b.map((v,i)=>v/A[i][i]);
+}
+function convesso(p){
+  let s=0;
+  for(let i=0;i<4;i++){
+    const a=p[i],b=p[(i+1)%4],c=p[(i+2)%4],z=(b.x-a.x)*(c.y-b.y)-(b.y-a.y)*(c.x-b.x);
+    if(z===0)return false;const sg=z>0?1:-1;if(!s)s=sg;else if(s!==sg)return false;
+  }
+  return true;
+}
+function raddrizza(){
+  if(!convesso(PTS)){$('hA').textContent='I 4 punti non formano un quadrilatero valido. Controlla l\u2019ordine: alto sinistra, alto destra, basso destra, basso sinistra.';return}
+  const[gw,gh]=$('gioco').value.split(',').map(Number);DIM={w:gw,h:gh};
+  const M=4*PX,CW=gw*PX,CH=gh*PX,DW=CW+2*M,DH=CH+2*M;
+  const h=omografia([{x:M,y:M},{x:M+CW,y:M},{x:M+CW,y:M+CH},{x:M,y:M+CH}],PTS);
+  if(!h){$('hA').textContent='Non riesco a raddrizzare con questi punti. Riprova a segnarli.';return}
+  const W=WK.width,H=WK.height,sd=WK.getContext('2d').getImageData(0,0,W,H).data;
+  RC=document.createElement('canvas');RC.width=DW;RC.height=DH;
+  const rc=RC.getContext('2d'),out=rc.createImageData(DW,DH),o=out.data;
+  for(let y=0;y<DH;y++)for(let x=0;x<DW;x++){
+    const w=h[6]*x+h[7]*y+1,u=(h[0]*x+h[1]*y+h[2])/w,v=(h[3]*x+h[4]*y+h[5])/w,i=(y*DW+x)*4;
+    o[i+3]=255;
+    if(u<0||v<0||u>=W-1||v>=H-1){o[i]=o[i+1]=o[i+2]=40;continue}
+    const x0=u|0,y0=v|0,fx=u-x0,fy=v-y0,a=(y0*W+x0)*4;
+    for(let k=0;k<3;k++)o[i+k]=sd[a+k]*(1-fx)*(1-fy)+sd[a+4+k]*fx*(1-fy)+sd[a+W*4+k]*(1-fx)*fy+sd[a+W*4+4+k]*fx*fy;
+  }
+  rc.putImageData(out,0,0);
+  LN={};TB=0;vaiB();
+}
+
+// ---------- Passo 2: bordi ----------
+function vaiB(){
+  $('stA').classList.add('hide');$('stB').classList.remove('hide');
+  const cb=$('cb');cb.width=RC.width;cb.height=RC.height;
+  tocco(cb,'lpb',p=>{
+    const t=TARGETS[TB];LN[t.k]=t.ax==='x'?p.x:p.y;dB();
+    loupe('lpb',cb,RC,p.x,p.y,t.ax,p.cx,p.cy);
+  },()=>{const n=TARGETS.findIndex(t=>LN[t.k]==null);if(n>=0)TB=n;dB()});
+  dB();
+}
+function dB(){
+  const cb=$('cb'),c=cb.getContext('2d');c.drawImage(RC,0,0);c.lineWidth=2;
+  TARGETS.forEach((t,i)=>{
+    if(LN[t.k]==null)return;c.strokeStyle=i===TB?'#ff0':t.c;c.beginPath();
+    if(t.ax==='x'){c.moveTo(LN[t.k],0);c.lineTo(LN[t.k],cb.height)}else{c.moveTo(0,LN[t.k]);c.lineTo(cb.width,LN[t.k])}
+    c.stroke();
+  });
+  $('chB').innerHTML=TARGETS.map((t,i)=>`<button class="sec chb ${i===TB?'cur':''}" onclick="TB=${i};dB()">${LN[t.k]!=null?'✓ ':''}${t.n}</button>`).join('');
+  const t=TARGETS[TB];
+  $('hB').textContent='Ora: '+t.n+'.';
+  $('nl').textContent=t.ax==='x'?'◀':'▲';$('nr').textContent=t.ax==='x'?'▶':'▼';
+  zoomB();risultato();
+}
+function nudge(d){
+  const t=TARGETS[TB];if(LN[t.k]==null)LN[t.k]=t.ax==='x'?RC.width/2:RC.height/2;
+  LN[t.k]+=d;dB();
+}
+function zoomB(){
+  const t=TARGETS[TB],z=$('zb'),c=z.getContext('2d'),v=LN[t.k];
+  z.width=480;z.height=240;c.fillStyle='#000';c.fillRect(0,0,480,240);
+  if(v==null)return;
+  const w=100,h=50,sx=t.ax==='x'?v-w/2:RC.width/2-w/2,sy=t.ax==='x'?RC.height/2-h/2:v-h/2;
+  c.drawImage(RC,sx,sy,w,h,0,0,480,240);
+  c.strokeStyle=t.c;c.lineWidth=2;c.beginPath();
+  if(t.ax==='x'){c.moveTo(240,0);c.lineTo(240,240)}else{c.moveTo(0,120);c.lineTo(480,120)}
+  c.stroke();
+}
+function risultato(){
+  const g=k=>LN[k],n=TARGETS.filter(t=>g(t.k)!=null).length;
+  if(n<8){$('ris').textContent='Segna tutte le linee per vedere il risultato ('+n+'/8).';return}
+  const ok=g('xo1')<g('xi1')&&g('xi1')<g('xi2')&&g('xi2')<g('xo2')&&g('yo1')<g('yi1')&&g('yi1')<g('yi2')&&g('yi2')<g('yo2');
+  if(!ok){$('ris').textContent='Le linee non sono nell\u2019ordine giusto (bordo carta, fine bordo stampato, fine bordo stampato, bordo carta). Correggi per vedere il risultato.';return}
+  const l=g('xi1')-g('xo1'),r=g('xo2')-g('xi2'),t=g('yi1')-g('yo1'),b=g('yo2')-g('yi2');
+  const p=(a,z)=>{const q=Math.round(a/(a+z)*100);return q+'/'+(100-q)};
+  const asp=(g('xo2')-g('xo1'))/(g('yo2')-g('yo1')),att=DIM.w/DIM.h,dev=Math.abs(asp/att-1)*100;
+  $('ris').innerHTML=`<div class="ris">Sinistra/Destra: ${p(l,r)}<br>Alto/Basso: ${p(t,b)}</div>
+   <p style="font-size:.85rem;margin:8px 0 0">Controllo raddrizzamento: larghezza/altezza della carta = ${asp.toFixed(3)} (attesa ${att.toFixed(3)}, scarto ${dev.toFixed(1)}%) ${dev<=1.5?'✓':'⚠ controlla i 4 angoli o il tipo di carta'}. La soglia dell\u20191,5% è provvisoria.</p>
+   <p style="font-size:.85rem;margin:8px 0 0">Misura manuale: l\u2019errore dipende da come posizioni le linee. Lo misureremo in Fase 7 con carte di cui conosci i valori. Stima, non un grading ufficiale.</p>`;
+}
+$('fileC').onchange=e=>{const f=e.target.files[0];if(f)apriCent(URL.createObjectURL(f));e.target.value=''};
+$('btnStart').onclick=avvia;$('btnShot').onclick=scatta;
+$('file').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;const im=new Image();
+  im.onload=()=>{const a=analizza(im,im.width,im.height),p=verifica(a,STEPS[i]);
+    if(p.length){alert('Rifai la foto:\n'+p.join('\n'));return}
+    $('start').classList.add('hide');salva(im.src);if(i<STEPS.length){$('cap').classList.remove('hide')}};
+  im.src=URL.createObjectURL(f);e.target.value='';
+};
+</script>
+</body>
+</html>
