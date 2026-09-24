@@ -1,17 +1,152 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Stima Grado Carte</title>
-  <style>
-    body { font-family: sans-serif; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }
-    .avviso { background: #fff3cd; padding: 1rem; border-radius: 8px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stima Grado Carte</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f2f2f4;--ok:#1a8a3a;--bad:#c0392b;--warn:#fff3cd;--warnfg:#5a4500;--acc:#2f5fd0}
+@media(prefers-color-scheme:dark){:root{--bg:#121316;--fg:#eee;--card:#22242a;--warn:#3d3410;--warnfg:#f3e2a0;--acc:#7fa2ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;padding:0 14px 40px;max-width:520px;margin-inline:auto}
+h1{font-size:1.3rem;margin:14px 0 6px}
+.avviso{background:var(--warn);color:var(--warnfg);padding:8px 10px;border-radius:8px;font-size:.85rem;margin-bottom:12px}
+button{font:inherit;padding:12px 16px;border-radius:10px;border:0;background:var(--acc);color:#fff;width:100%;margin-top:8px}
+button.sec{background:var(--card);color:var(--fg)}
+.box{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:3/4}
+video{width:100%;height:100%;object-fit:cover}
+.guida{position:absolute;inset:0;margin:auto;height:84%;aspect-ratio:63/88;border:3px dashed rgba(255,255,255,.85);border-radius:10px;pointer-events:none}
+.chips{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}
+.chip{background:var(--card);padding:6px 10px;border-radius:99px;font-size:.85rem}
+.chip.ok{color:var(--ok)}.chip.bad{color:var(--bad)}
+.msg{background:var(--card);padding:10px;border-radius:8px;margin-top:8px;font-size:.92rem}
+.prog{font-size:.85rem;opacity:.75}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid div{background:var(--card);border-radius:8px;padding:6px;font-size:.8rem}
+.grid img{width:100%;border-radius:6px;display:block}
+.hide{display:none}
+</style>
 </head>
 <body>
-  <h1>Stima Grado Carte</h1>
-  <p>Ciao! Se vedi questa pagina, la Fase 1 funziona.</p>
-  <p class="avviso">Attenzione: questa è una stima, non un grading ufficiale.</p>
+<h1>Stima Grado Carte</h1>
+<div class="avviso">Questa è una <b>stima</b>, non un grading ufficiale. Le foto restano sul tuo telefono: non vengono inviate a nessuno.</div>
+
+<div id="start">
+  <p>Fase 3: ti guido nello scattare 11 foto della carta. Ad ogni foto controllo nitidezza, luce e riflessi. Se non va bene, ti chiedo di rifarla.</p>
+  <button id="btnStart">Inizia (attiva la fotocamera)</button>
+  <button class="sec hide" id="fbl" type="button" onclick="document.getElementById('file').click()">Camera non disponibile? Scegli una foto</button>
+  <input id="file" type="file" accept="image/*" capture="environment" class="hide">
+</div>
+
+<div id="cap" class="hide">
+  <div class="prog" id="prog"></div>
+  <h2 id="titolo" style="margin:4px 0"></h2>
+  <div id="hint"></div>
+  <div class="box"><video id="v" playsinline muted autoplay></video><div class="guida"></div></div>
+  <div class="chips" id="chips"></div>
+  <div class="msg hide" id="msg"></div>
+  <button id="btnShot">Scatta</button>
+</div>
+
+<div id="fine" class="hide">
+  <h2>Foto raccolte</h2>
+  <p>Controlla le miniature. Puoi rifare quelle che non ti convincono.</p>
+  <div class="grid" id="grid"></div>
+  <div class="msg">La misura di centratura, angoli e bordi arriva nelle prossime fasi.</div>
+</div>
+
+<script>
+const STEPS=[
+ {t:'Fronte',h:'Carta intera, dritta, dentro il rettangolo tratteggiato.',g:1},
+ {t:'Retro',h:'Gira la carta. Intera, dritta, dentro il rettangolo.',g:1},
+ {t:'Angolo alto-sinistra (fronte)',h:'Avvicinati: l\u2019angolo deve riempire l\u2019inquadratura.',g:1},
+ {t:'Angolo alto-destra (fronte)',h:'Avvicinati all\u2019angolo.',g:1},
+ {t:'Angolo basso-sinistra (fronte)',h:'Avvicinati all\u2019angolo.',g:1},
+ {t:'Angolo basso-destra (fronte)',h:'Avvicinati all\u2019angolo.',g:1},
+ {t:'Bordo alto',h:'Tieni la carta di taglio o inclinata, per vedere il bordo superiore.',g:1},
+ {t:'Bordo basso',h:'Come prima, per il bordo inferiore.',g:1},
+ {t:'Bordo sinistro',h:'Come prima, per il bordo sinistro.',g:1},
+ {t:'Bordo destro',h:'Come prima, per il bordo destro.',g:1},
+ {t:'Luce inclinata',h:'Inclina la carta sotto una lampada: qui i riflessi sono voluti e servono a vedere graffi e pieghe.',g:0}
+];
+// SOGLIE PROVVISORIE: da tarare sul tuo telefono
+const TH={buioMax:70,chiaroMax:200,nitidMin:40,abbagl:0.02};
+const $=id=>document.getElementById(id);
+const foto=[];let i=0,stream=null,timer=null,riprendi=null;
+const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});
+
+function analizza(src,w,h){
+  const W=320,H=Math.round(W*h/w);cv.width=W;cv.height=H;cx.drawImage(src,0,0,W,H);
+  const d=cx.getImageData(0,0,W,H).data,g=new Float32Array(W*H);let s=0,ab=0;
+  for(let p=0;p<W*H;p++){const r=d[p*4],gg=d[p*4+1],b=d[p*4+2];g[p]=.299*r+.587*gg+.114*b;s+=g[p];if(r>=250&&gg>=250&&b>=250)ab++}
+  let ls=0,lq=0,n=0;
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const p=y*W+x,l=4*g[p]-g[p-1]-g[p+1]-g[p-W]-g[p+W];ls+=l;lq+=l*l;n++}
+  const m=ls/n;
+  return{luce:s/(W*H),nitid:lq/n-m*m,abb:ab/(W*H)};
+}
+function verifica(a,step){
+  const p=[];
+  if(a.luce<TH.buioMax)p.push('Troppo buio: avvicinati a una luce.');
+  if(a.luce>TH.chiaroMax)p.push('Troppo chiaro: riduci la luce diretta.');
+  if(a.nitid<TH.nitidMin)p.push('Foto sfocata: tieni fermo il telefono e aspetta la messa a fuoco.');
+  if(step.g&&a.abb>TH.abbagl)p.push('Riflessi forti: cambia angolo o spegni la luce che si specchia.');
+  return p;
+}
+function chips(a,step){
+  const c=(ok,t)=>`<span class="chip ${ok?'ok':'bad'}">${ok?'✓':'✗'} ${t}</span>`;
+  $('chips').innerHTML=c(a.luce>=TH.buioMax&&a.luce<=TH.chiaroMax,'Luce '+a.luce.toFixed(0))+
+   c(a.nitid>=TH.nitidMin,'Nitidezza '+a.nitid.toFixed(0))+
+   (step.g?c(a.abb<=TH.abbagl,'Riflessi '+(a.abb*100).toFixed(1)+'%'):'<span class="chip">Riflessi: non richiesti</span>');
+}
+function mostraStep(){
+  const s=STEPS[i];$('prog').textContent='Foto '+(i+1)+' di '+STEPS.length;
+  $('titolo').textContent=s.t;$('hint').textContent=s.h;$('msg').classList.add('hide');
+}
+function loopLive(){
+  clearInterval(timer);
+  timer=setInterval(()=>{const v=$('v');if(v.videoWidth)chips(analizza(v,v.videoWidth,v.videoHeight),STEPS[i])},400);
+}
+async function apriCamera(){
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+  $('v').srcObject=stream;loopLive();
+}
+async function avvia(){
+  try{
+    await apriCamera();
+    $('start').classList.add('hide');$('cap').classList.remove('hide');mostraStep();
+  }catch(e){
+    $('start').insertAdjacentHTML('beforeend','<div class="msg">Non riesco ad aprire la fotocamera ('+e.name+'). Controlla i permessi del browser, oppure usa il pulsante per scegliere una foto.</div>');
+    $('fbl').classList.remove('hide');
+  }
+}
+function salva(url){
+  foto[i]=url;
+  if(riprendi!==null){riprendi=null;fine()}
+  else{i++;if(i>=STEPS.length)fine();else mostraStep()}
+}
+function scatta(){
+  const v=$('v'),s=STEPS[i],a=analizza(v,v.videoWidth,v.videoHeight),p=verifica(a,s);
+  if(p.length){const m=$('msg');m.innerHTML='<b>Rifai la foto.</b><br>'+p.join('<br>');m.classList.remove('hide');return}
+  const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
+  salva(c.toDataURL('image/jpeg',.92));
+}
+function fine(){
+  clearInterval(timer);if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  $('start').classList.add('hide');$('cap').classList.add('hide');$('fine').classList.remove('hide');
+  $('grid').innerHTML=STEPS.map((s,k)=>foto[k]?`<div><img src="${foto[k]}"><b>${s.t}</b><br><a href="#" onclick="rifai(${k});return false">Rifai</a></div>`:`<div><b>${s.t}</b><br>non scattata</div>`).join('');
+}
+async function rifai(k){
+  i=k;riprendi=k;$('fine').classList.add('hide');$('cap').classList.remove('hide');mostraStep();
+  try{await apriCamera()}catch(e){$('msg').textContent='Fotocamera non disponibile ('+e.name+').';$('msg').classList.remove('hide')}
+}
+$('btnStart').onclick=avvia;$('btnShot').onclick=scatta;
+$('file').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;const im=new Image();
+  im.onload=()=>{const a=analizza(im,im.width,im.height),p=verifica(a,STEPS[i]);
+    if(p.length){alert('Rifai la foto:\n'+p.join('\n'));return}
+    $('start').classList.add('hide');salva(im.src);if(i<STEPS.length){$('cap').classList.remove('hide')}};
+  im.src=URL.createObjectURL(f);e.target.value='';
+};
+</script>
 </body>
 </html>
