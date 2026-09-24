@@ -24,6 +24,11 @@ video{width:100%;height:100%;object-fit:cover}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .grid div{background:var(--card);border-radius:8px;padding:6px;font-size:.8rem}
 .grid img{width:100%;border-radius:6px;display:block}
+.pan{background:var(--card);border-radius:10px;padding:8px;margin-top:10px}
+.pan canvas,#ov{width:100%;border-radius:6px;display:block}
+.pan label{display:block;font-size:.85rem;margin-top:6px}
+.pan input[type=range]{width:100%}
+.ris{font-size:1.1rem;font-weight:600}
 .hide{display:none}
 </style>
 </head>
@@ -36,6 +41,8 @@ video{width:100%;height:100%;object-fit:cover}
   <button id="btnStart">Inizia (attiva la fotocamera)</button>
   <button class="sec hide" id="fbl" type="button" onclick="document.getElementById('file').click()">Camera non disponibile? Scegli una foto</button>
   <input id="file" type="file" accept="image/*" capture="environment" class="hide">
+  <button class="sec" type="button" onclick="document.getElementById('fileC').click()">Solo centratura: scegli una foto dalla galleria</button>
+  <input id="fileC" type="file" accept="image/*" class="hide">
 </div>
 
 <div id="cap" class="hide">
@@ -52,7 +59,19 @@ video{width:100%;height:100%;object-fit:cover}
   <h2>Foto raccolte</h2>
   <p>Controlla le miniature. Puoi rifare quelle che non ti convincono.</p>
   <div class="grid" id="grid"></div>
-  <div class="msg">La misura di centratura, angoli e bordi arriva nelle prossime fasi.</div>
+  <button onclick="apriCent(foto[0])">Misura centratura del fronte</button>
+  <button class="sec" onclick="apriCent(foto[1])">Misura centratura del retro</button>
+  <div class="msg">Angoli, bordi e superficie arrivano nelle prossime fasi.</div>
+</div>
+
+<div id="cent" class="hide">
+  <h2 style="margin:4px 0">Centratura</h2>
+  <div class="msg">Foto dritta e ferma = misura più affidabile. Se la carta è inclinata nella foto, i rapporti non sono attendibili.
+  Per ogni lato sposta la linea <b style="color:#d33">rossa</b> sul bordo esterno della carta e la linea <b style="color:#38f">blu</b> dove finisce il bordo stampato (es. il giallo dei Pokémon) e inizia il disegno.</div>
+  <canvas id="ov" style="margin-top:10px"></canvas>
+  <div id="pans"></div>
+  <div class="msg" id="ris"></div>
+  <button class="sec" onclick="esciCent()">Indietro</button>
 </div>
 
 <script>
@@ -139,6 +158,68 @@ async function rifai(k){
   i=k;riprendi=k;$('fine').classList.add('hide');$('cap').classList.remove('hide');mostraStep();
   try{await apriCamera()}catch(e){$('msg').textContent='Fotocamera non disponibile ('+e.name+').';$('msg').classList.remove('hide')}
 }
+// ---- FASE 4: centratura (misura manuale con linee) ----
+let CI=null;
+const C={xo1:.05,xi1:.12,xi2:.88,xo2:.95,yo1:.05,yi1:.12,yi2:.88,yo2:.95};
+const LATI=[
+ {k:'Sinistra',ax:'x',o:'xo1',n:'xi1',b:[0,.3]},
+ {k:'Destra',ax:'x',o:'xo2',n:'xi2',b:[.7,1]},
+ {k:'Alto',ax:'y',o:'yo1',n:'yi1',b:[0,.3]},
+ {k:'Basso',ax:'y',o:'yo2',n:'yi2',b:[.7,1]}
+];
+const toVal=(l,c)=>Math.round((c-l.b[0])/(l.b[1]-l.b[0])*1000);
+const toCoord=(l,v)=>l.b[0]+(l.b[1]-l.b[0])*v/1000;
+function apriCent(url){
+  if(!url){alert('Questa foto non c\u2019è ancora.');return}
+  CI=new Image();
+  CI.onload=()=>{
+    $('start').classList.add('hide');$('fine').classList.add('hide');$('cap').classList.add('hide');$('cent').classList.remove('hide');
+    $('pans').innerHTML=LATI.map((l,k)=>`<div class="pan"><b>Lato ${l.k}</b><canvas id="pc${k}"></canvas>
+     <label>Bordo esterno della carta (rosso)<input type="range" min="0" max="1000" id="so${k}" value="${toVal(l,C[l.o])}"></label>
+     <label>Fine del bordo stampato (blu)<input type="range" min="0" max="1000" id="si${k}" value="${toVal(l,C[l.n])}"></label></div>`).join('');
+    LATI.forEach((l,k)=>{
+      $('so'+k).oninput=e=>{C[l.o]=toCoord(l,+e.target.value);ridisegna()};
+      $('si'+k).oninput=e=>{C[l.n]=toCoord(l,+e.target.value);ridisegna()};
+    });
+    ridisegna();
+  };
+  CI.src=url;
+}
+function esciCent(){
+  $('cent').classList.add('hide');
+  if(foto.length)$('fine').classList.remove('hide');else $('start').classList.remove('hide');
+}
+function linea(c,ax,pos,col,W,H){c.strokeStyle=col;c.lineWidth=2;c.beginPath();
+  if(ax==='x'){c.moveTo(pos,0);c.lineTo(pos,H)}else{c.moveTo(0,pos);c.lineTo(W,pos)}c.stroke()}
+function ridisegna(){
+  const W=CI.naturalWidth,H=CI.naturalHeight,ov=$('ov');
+  ov.width=720;ov.height=Math.round(720*H/W);const oc=ov.getContext('2d');
+  oc.drawImage(CI,0,0,ov.width,ov.height);
+  ['xo1','xo2'].forEach(k=>linea(oc,'x',C[k]*ov.width,'#e33',ov.width,ov.height));
+  ['xi1','xi2'].forEach(k=>linea(oc,'x',C[k]*ov.width,'#38f',ov.width,ov.height));
+  ['yo1','yo2'].forEach(k=>linea(oc,'y',C[k]*ov.height,'#e33',ov.width,ov.height));
+  ['yi1','yi2'].forEach(k=>linea(oc,'y',C[k]*ov.height,'#38f',ov.width,ov.height));
+  LATI.forEach((l,k)=>{
+    const cv2=$('pc'+k),c=cv2.getContext('2d'),x=l.ax==='x';
+    const sx=x?l.b[0]*W:.4*W,sw=x?(l.b[1]-l.b[0])*W:.2*W,sy=x?.4*H:l.b[0]*H,sh=x?.2*H:(l.b[1]-l.b[0])*H;
+    cv2.width=640;cv2.height=Math.round(640*sh/sw);
+    c.drawImage(CI,sx,sy,sw,sh,0,0,cv2.width,cv2.height);
+    [[l.o,'#e33'],[l.n,'#38f']].forEach(([key,col])=>{
+      const pos=x?(C[key]*W-sx)/sw*cv2.width:(C[key]*H-sy)/sh*cv2.height;
+      linea(c,l.ax,pos,col,cv2.width,cv2.height);
+    });
+  });
+  risultato();
+}
+function risultato(){
+  const ok=C.xo1<C.xi1&&C.xi1<C.xi2&&C.xi2<C.xo2&&C.yo1<C.yi1&&C.yi1<C.yi2&&C.yi2<C.yo2;
+  if(!ok){$('ris').innerHTML='Le linee non sono nell\u2019ordine giusto (esterno, interno, interno, esterno). Correggi per vedere il risultato.';return}
+  const l=C.xi1-C.xo1,r=C.xo2-C.xi2,t=C.yi1-C.yo1,b=C.yo2-C.yi2;
+  const p=(a,z)=>Math.round(a/(a+z)*100)+'/'+(100-Math.round(a/(a+z)*100));
+  $('ris').innerHTML=`<div class="ris">Sinistra/Destra: ${p(l,r)}<br>Alto/Basso: ${p(t,b)}</div>
+   <p style="font-size:.85rem;margin:8px 0 0">Misura manuale: l\u2019errore dipende da quanto bene posizioni le linee e da quanto è dritta la foto. La misureremo in Fase 7 confrontando con carte di cui conosci i valori. Stima, non un grading ufficiale.</p>`;
+}
+$('fileC').onchange=e=>{const f=e.target.files[0];if(f)apriCent(URL.createObjectURL(f));e.target.value=''};
 $('btnStart').onclick=avvia;$('btnShot').onclick=scatta;
 $('file').onchange=e=>{
   const f=e.target.files[0];if(!f)return;const im=new Image();
