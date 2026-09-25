@@ -112,9 +112,10 @@ function parsePokemon(bottom,all){
     return candidates[0];
   }
 
-  // Fallback solo sulla parte bassa: prefissi speciali o numero breve isolato.
+  // Senza separatore numero/totale non usiamo cifre isolate:
+  // potrebbero essere HP, danni degli attacchi o costi.
   var t=bottom.toUpperCase();
-  var sp=t.match(/\b(?:TG|GG|SV|SWSH|SM|XY|RC|SH|DP|BW)?\s*\d{1,4}\b/i);
+  var sp=t.match(/\b(?:TG|GG|SV|SWSH|SM|XY|RC|SH|DP|BW)\s*\d{1,4}\b/i);
   if(sp)return {number:sp[0].replace(/\s/g,''),total:null,raw:sp[0],score:1};
   return {number:null,total:null,raw:'',score:0};
 }
