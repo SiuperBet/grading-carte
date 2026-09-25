@@ -81,7 +81,7 @@ function install(){
 #cent .cc2corners,#cent .cc2lines{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:9px 0}
 #cent .cc2corners button,#cent .cc2lines button{margin:0}
 #cent .cc2sel{outline:2px solid #2f65ff}
-#cent .cc2lens{display:none;width:150px;height:150px;margin:8px auto 0;border:2px solid #36e16f;border-radius:14px;background:#000}
+#cent .cc2lens{display:none;width:min(92%,420px);height:auto;aspect-ratio:1/1;margin:10px auto 0;border:3px solid #36e16f;border-radius:16px;background:#000;box-shadow:0 6px 20px #0008}
 #cent .cc2row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}#cent .cc2row button{flex:1;min-width:42%}
 #cent .cc2result{font-size:1.12rem;font-weight:800;line-height:1.5;padding:12px;border-radius:12px;background:#111820;margin:10px 0}
 #cent .cc2help{font-size:.9rem;opacity:.82}
@@ -96,7 +96,7 @@ function install(){
   <h3>1 · Angoli fisici della carta</h3>
   <div id="cc2Astatus" class="cc2status">Carico la foto…</div>
   <div class="cc2corners" id="cc2cornerBtns"></div>
-  <div class="cc2wrap"><canvas id="cc2canvasA" class="cc2canvas"></canvas><canvas id="cc2lensA" class="cc2lens" width="360" height="360"></canvas></div>
+  <div class="cc2wrap"><canvas id="cc2canvasA" class="cc2canvas"></canvas><canvas id="cc2lensA" class="cc2lens" width="720" height="720"></canvas></div>
   <div class="cc2help">Tocca un angolo e trascinalo sul bordo fisico reale. La foto resta sempre intera. La lente sotto serve solo per la precisione.</div>
   <div class="cc2row"><button class="sec" id="cc2Auto">◎ Rileva automaticamente</button><button class="sec" id="cc2Clear">Azzera 4 punti</button></div>
   <button id="cc2Warp" disabled>Raddrizza e passa alla centratura</button>
@@ -107,7 +107,7 @@ function install(){
   <div class="cc2msg">La carta è già raddrizzata: il <b>bordo esterno coincide con il bordo dell'immagine</b>. Ora controlla solo dove finisce il bordo esterno stampato e inizia il contenuto della carta.</div>
   <div id="cc2Bstatus" class="cc2status"></div>
   <div class="cc2lines" id="cc2lineBtns"></div>
-  <div class="cc2wrap"><canvas id="cc2canvasB" class="cc2canvas"></canvas><canvas id="cc2lensB" class="cc2lens" width="360" height="360"></canvas></div>
+  <div class="cc2wrap"><canvas id="cc2canvasB" class="cc2canvas"></canvas><canvas id="cc2lensB" class="cc2lens" width="720" height="720"></canvas></div>
   <div id="cc2Result" class="cc2result"></div>
   <div class="cc2row"><button class="sec" id="cc2BackA">← Correggi angoli</button><button class="sec" id="cc2AutoLines">◎ Rileva 4 linee</button></div>
   <button id="cc2UseOCR">Usa carta raddrizzata per riconoscimento</button>
@@ -173,12 +173,12 @@ function renderA(){
 function renderCornerButtons(){
   const names=['1 alto sinistra','2 alto destra','3 basso destra','4 basso sinistra'];
   el('cc2cornerBtns').innerHTML=names.map((n,i)=>'<button type="button" class="sec '+(i===state.selected?'cc2sel':'')+'" data-i="'+i+'">'+(state.points[i]?'✓ ':'')+n+'</button>').join('');
-  el('cc2cornerBtns').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.selected=+b.dataset.i;renderCornerButtons();renderA()});
+  el('cc2cornerBtns').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.selected=+b.dataset.i;renderCornerButtons();renderA();if(state.points[state.selected])drawLensA(state.points[state.selected])});
 }
 function drawLensA(p){
-  if(!p)return;const l=el('cc2lensA'),x=l.getContext('2d'),S=Math.max(45,Math.min(state.source.width,state.source.height)*.09);
+  if(!p)return;const l=el('cc2lensA'),x=l.getContext('2d'),S=Math.max(28,Math.min(state.source.width,state.source.height)*.055);
   const sx=clamp(p.x-S/2,0,Math.max(0,state.source.width-S)),sy=clamp(p.y-S/2,0,Math.max(0,state.source.height-S));
-  x.clearRect(0,0,l.width,l.height);x.drawImage(state.source,sx,sy,S,S,0,0,l.width,l.height);x.strokeStyle='#2ee66b';x.lineWidth=2;x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();l.style.display='block';
+  x.clearRect(0,0,l.width,l.height);x.drawImage(state.source,sx,sy,S,S,0,0,l.width,l.height);x.strokeStyle='#2ee66b';x.lineWidth=3;x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();x.fillStyle='#ffd322';x.beginPath();x.arc(l.width/2,l.height/2,7,0,Math.PI*2);x.fill();l.style.display='block';
 }
 function hideLensA(){el('cc2lensA').style.display='none'}
 
@@ -364,7 +364,7 @@ function bindA(){
     state.points[state.selected]=p;state.editingVersion++;dragging=true;renderCornerButtons();renderA();drawLensA(p)
   };
   cv.onpointermove=e=>{if(!dragging)return;const p=sourceToCanvasPoint(cv,e);state.points[state.selected]=p;renderA();drawLensA(p)};
-  const up=()=>{if(!dragging)return;dragging=false;hideLensA();saveState();renderCornerButtons();renderA()};
+  const up=()=>{if(!dragging)return;dragging=false;saveState();renderCornerButtons();renderA();if(state.points[state.selected])drawLensA(state.points[state.selected])};
   cv.onpointerup=up;cv.onpointercancel=up;
 }
 
@@ -428,9 +428,9 @@ function renderLineButtons(){
   el('cc2lineBtns').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.lineSel=b.dataset.k;renderLineButtons();renderB()})
 }
 function drawLensB(p){
-  const l=el('cc2lensB'),x=l.getContext('2d'),W=state.rectified.width,H=state.rectified.height,S=120;
+  const l=el('cc2lensB'),x=l.getContext('2d'),W=state.rectified.width,H=state.rectified.height,S=72;
   const sx=clamp(p.x-S/2,0,W-S),sy=clamp(p.y-S/2,0,H-S);x.clearRect(0,0,l.width,l.height);x.drawImage(state.rectified,sx,sy,S,S,0,0,l.width,l.height);
-  x.strokeStyle='#2188ff';x.lineWidth=2;x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();l.style.display='block';
+  x.strokeStyle='#2188ff';x.lineWidth=3;x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();x.fillStyle='#ffd322';x.beginPath();x.arc(l.width/2,l.height/2,7,0,Math.PI*2);x.fill();l.style.display='block';
 }
 function hideLensB(){el('cc2lensB').style.display='none'}
 function updateResult(){
