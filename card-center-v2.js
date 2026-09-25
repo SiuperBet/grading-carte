@@ -105,7 +105,7 @@ function install(){
 
 <section id="cc2B" class="cc2stage">
   <h3>2 · Centratura</h3>
-  <div class="cc2msg">La carta è già raddrizzata: il <b>bordo esterno coincide con il bordo dell'immagine</b>. Ora controlla solo dove finisce il bordo esterno stampato e inizia il contenuto della carta.</div>
+  <div class="cc2msg">La carta è già raddrizzata: il <b>bordo esterno coincide con il bordo dell'immagine</b>. Sposta ogni linea fino al <b>limite reale tra il bordo stampato (es. giallo) e il contenuto della carta</b>. Il mirino può arrivare fino al vero bordo dell'immagine.</div>
   <div id="cc2Bstatus" class="cc2status"></div>
   <div class="cc2lines" id="cc2lineBtns"></div>
   <div class="cc2wrap"><canvas id="cc2canvasB" class="cc2canvas"></canvas><canvas id="cc2lensB" class="cc2lens" width="720" height="720"></canvas></div>
@@ -576,9 +576,27 @@ function renderLineButtons(){
   el('cc2lineBtns').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.lineSel=b.dataset.k;renderLineButtons();renderB()})
 }
 function drawLensB(p){
-  const l=el('cc2lensB'),x=l.getContext('2d'),W=state.rectified.width,H=state.rectified.height,S=72;
-  const sx=clamp(p.x-S/2,0,W-S),sy=clamp(p.y-S/2,0,H-S);x.clearRect(0,0,l.width,l.height);x.drawImage(state.rectified,sx,sy,S,S,0,0,l.width,l.height);
-  x.strokeStyle='#2188ff';x.lineWidth=3;x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();x.fillStyle='#ffd322';x.beginPath();x.arc(l.width/2,l.height/2,7,0,Math.PI*2);x.fill();
+  const l=el('cc2lensB'),x=l.getContext('2d'),W=state.rectified.width,H=state.rectified.height;
+  // Più contesto nella fase 2: serve vedere chiaramente bordo giallo + contenuto.
+  const S=Math.max(96,Math.min(W,H)*.15);
+
+  // Il punto selezionato resta SEMPRE al centro anche vicino ai bordi.
+  // Non spostiamo il ritaglio verso l'interno: fuori dalla carta mostriamo nero.
+  const sx=p.x-S/2,sy=p.y-S/2;
+  const srcX=Math.max(0,sx),srcY=Math.max(0,sy);
+  const srcR=Math.min(W,sx+S),srcB=Math.min(H,sy+S);
+  const srcW=Math.max(0,srcR-srcX),srcH=Math.max(0,srcB-srcY);
+  const dstX=(srcX-sx)/S*l.width,dstY=(srcY-sy)/S*l.height;
+  const dstW=srcW/S*l.width,dstH=srcH/S*l.height;
+
+  x.fillStyle='#07090c';x.fillRect(0,0,l.width,l.height);
+  if(srcW>0&&srcH>0)x.drawImage(state.rectified,srcX,srcY,srcW,srcH,dstX,dstY,dstW,dstH);
+
+  x.strokeStyle='#2188ff';x.lineWidth=3;x.beginPath();
+  x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);
+  x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();
+
+  x.fillStyle='#ffd322';x.beginPath();x.arc(l.width/2,l.height/2,7,0,Math.PI*2);x.fill();
 }
 function hideLensB(){el('cc2lensB').style.display='none'}
 function updateResult(){
@@ -607,10 +625,12 @@ function bindB(){
 }
 function placeLine(p){
   const k=state.lineSel,W=state.rectified.width,H=state.rectified.height;
-  if(k==='l')state.lines.l=clamp(p.x,W*.01,W*.35);
-  if(k==='r')state.lines.r=clamp(p.x,W*.65,W*.99);
-  if(k==='t')state.lines.t=clamp(p.y,H*.01,H*.35);
-  if(k==='b')state.lines.b=clamp(p.y,H*.65,H*.99);
+  // Nessun margine artificiale: la linea può arrivare davvero fino al bordo della carta.
+  // Manteniamo solo la metà corretta per evitare di scambiare sinistra/destra o alto/basso.
+  if(k==='l')state.lines.l=clamp(p.x,0,W*.499);
+  if(k==='r')state.lines.r=clamp(p.x,W*.501,W);
+  if(k==='t')state.lines.t=clamp(p.y,0,H*.499);
+  if(k==='b')state.lines.b=clamp(p.y,H*.501,H);
   renderB();updateResult();
 }
 function useForOCR(){
