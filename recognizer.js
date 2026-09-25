@@ -658,23 +658,41 @@ function quickCardDetect(source,game){
     var dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len;
     var mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
     if(Math.hypot(mx+nx*5-cx,my+ny*5-cy)>Math.hypot(mx-nx*5-cx,my-ny*5-cy)){nx=-nx;ny=-ny}
-    var strong=0,edgeSum=0,contrastSum=0,innerColors=[],n=28,off=Math.max(2,Math.min(5,len*.018));
+    var strong=0,edgeSum=0,contrastSum=0,innerColors=[],outerColors=[],innerTex=0,outerTex=0,n=28;
+    var off=Math.max(3,Math.min(7,len*.022));
     for(var k=0;k<n;k++){
-      var t=.035+.93*k/(n-1),x=a.x+dx*t,y=a.y+dy*t,best=0;
+      var t=.045+.91*k/(n-1),x=a.x+dx*t,y=a.y+dy*t,best=0;
       for(var o=-2;o<=2;o++){
         var xx=Math.round(x+(-dy/len)*o),yy=Math.round(y+(dx/len)*o);
         if(xx<1||xx>=w-1||yy<1||yy>=h-1)continue;
         best=Math.max(best,mag[yy*w+xx]);
       }
       edgeSum+=best;if(best>=edgeThr*.70)strong++;
-      var ci=rgbAt(x+nx*off,y+ny*off),co=rgbAt(x-nx*off,y-ny*off);
-      contrastSum+=colorDist(ci,co);innerColors.push(ci);
+
+      var ix=Math.round(x+nx*off),iy=Math.round(y+ny*off);
+      var ox=Math.round(x-nx*off),oy=Math.round(y-ny*off);
+      ix=Math.max(1,Math.min(w-2,ix));iy=Math.max(1,Math.min(h-2,iy));
+      ox=Math.max(1,Math.min(w-2,ox));oy=Math.max(1,Math.min(h-2,oy));
+
+      var ci=rgbAt(ix,iy),co=rgbAt(ox,oy);
+      contrastSum+=colorDist(ci,co);innerColors.push(ci);outerColors.push(co);
+      innerTex+=mag[iy*w+ix];outerTex+=mag[oy*w+ox];
     }
-    var mean=[0,0,0];
+    var mean=[0,0,0],outerMean=[0,0,0];
     innerColors.forEach(function(v){mean[0]+=v[0];mean[1]+=v[1];mean[2]+=v[2]});
+    outerColors.forEach(function(v){outerMean[0]+=v[0];outerMean[1]+=v[1];outerMean[2]+=v[2]});
     mean=mean.map(function(v){return v/innerColors.length});
-    var dev=0;innerColors.forEach(function(v){dev+=colorDist(v,mean)});dev/=innerColors.length;
-    return {edge:edgeSum/n,strong:strong/n,contrast:contrastSum/n,innerDev:dev,mean:mean};
+    outerMean=outerMean.map(function(v){return v/outerColors.length});
+    var dev=0,outDev=0;
+    innerColors.forEach(function(v){dev+=colorDist(v,mean)});dev/=innerColors.length;
+    outerColors.forEach(function(v){outDev+=colorDist(v,outerMean)});outDev/=outerColors.length;
+    innerTex/=n;outerTex/=n;
+    var textureDelta=outerTex-innerTex;
+    return {
+      edge:edgeSum/n,strong:strong/n,contrast:contrastSum/n,
+      innerDev:dev,outerDev:outDev,innerTex:innerTex,outerTex:outerTex,
+      textureDelta:textureDelta,mean:mean,outerMean:outerMean
+    };
   }
 
   var ratio=game==='ygo'?59/86:63/88,best=null,midY=h/2,midX=w/2;
@@ -719,15 +737,31 @@ function quickCardDetect(source,game){
       var frameDev=ss.reduce(function(a,s){return a+colorDist(s.mean,frameMean)},0)/4;
       var frameConsistency=Math.max(0,1-Math.min(1,frameDev/92));
 
-      // Preferenza forte per il perimetro fisico completo; il solo contrasto non basta.
-      var score=.27*areaPref+.18*support+.10*edgeNorm+.14*contrast+.07*uniformity+.19*frameConsistency+.05*ratioFit;
+      // Bordo fisico: appena fuori deve cambiare davvero materiale/sfondo.
+      // Una cornice stampata interna spesso ha PIÙ texture dentro (illustrazione/testo) che fuori.
+      var textureDeltas=ss.map(function(s){return s.textureDelta});
+      var avgTextureDelta=textureDeltas.reduce(function(a,v){return a+v},0)/4;
+      var minTextureDelta=Math.min.apply(null,textureDeltas);
+      var physicality=Math.max(0,Math.min(1,(avgTextureDelta+18)/58));
+      var badInnerPrinted=minTextureDelta<-24;
 
-      // Un candidato molto incoerente come colore di cornice non può vincere solo grazie a una linea nera forte.
-      if(frameConsistency<.34)score*=.62;
+      // Anche l'esterno dovrebbe essere meno coerente col colore della cornice interna.
+      var outsideContrast=ss.reduce(function(a,s){return a+colorDist(s.mean,s.outerMean)},0)/(4*105);
+      outsideContrast=Math.max(0,Math.min(1,outsideContrast));
 
-      // A parità quasi completa, scegli il candidato più grande.
-      if(!best||score>best.score+.016||(Math.abs(score-best.score)<=.016&&area>best.area)){
-        best={q:q,score:score,re:re,area:area,support:support,minStrong:minStrong,contrast:contrast,uniformity:uniformity,frameConsistency:frameConsistency,oppW:oppW,oppH:oppH};
+      var score=.24*areaPref+.16*support+.08*edgeNorm+.13*contrast+.06*uniformity+
+                .15*frameConsistency+.12*physicality+.04*outsideContrast+.02*ratioFit;
+
+      if(frameConsistency<.30)score*=.58;
+      if(badInnerPrinted)score*=.42;
+
+      if(!best||score>best.score+.014||(Math.abs(score-best.score)<=.014&&area>best.area)){
+        best={
+          q:q,score:score,re:re,area:area,support:support,minStrong:minStrong,
+          contrast:contrast,uniformity:uniformity,frameConsistency:frameConsistency,
+          physicality:physicality,minTextureDelta:minTextureDelta,
+          avgTextureDelta:avgTextureDelta,oppW:oppW,oppH:oppH
+        };
       }
     }
   }
@@ -763,13 +797,23 @@ function quickCardDetect(source,game){
       if(score>bestScore)bestScore=score;
     }
     var viable=rows.filter(function(r){
-      return r.st.strong>=.38&&r.st.contrast>=12&&r.st.edge>=edgeThr*.42&&r.score>=bestScore*.66;
+      return r.st.strong>=.38&&r.st.contrast>=12&&r.st.edge>=edgeThr*.42&&r.score>=bestScore*.58;
     });
     if(!viable.length)return rows[0]||null;
 
-    // Tra bordi plausibili scegli quello più esterno; una texture casuale difficilmente
-    // resta continua lungo quasi tutto il lato.
-    viable.sort(function(a,b){return b.off-a.off||b.score-a.score});
+    // Premia il passaggio carta -> sfondo. Non scegliere più semplicemente il bordo più esterno:
+    // sul tessuto potrebbe esserci una trama forte.
+    viable.forEach(function(r){
+      var phys=Math.max(0,Math.min(1,(r.st.textureDelta+18)/58));
+      var outContrast=Math.max(0,Math.min(1,colorDist(r.st.mean,r.st.outerMean)/105));
+      r.physicalScore=.40*r.st.strong+.22*Math.min(1,r.st.edge/(edgeThr*1.9))+
+                      .20*Math.min(1,r.st.contrast/70)+.13*phys+.05*outContrast;
+      if(r.st.textureDelta<-24)r.physicalScore*=.45;
+    });
+    viable.sort(function(a,b){
+      if(Math.abs(b.physicalScore-a.physicalScore)>.035)return b.physicalScore-a.physicalScore;
+      return b.off-a.off;
+    });
     return viable[0];
   }
 
@@ -798,14 +842,19 @@ function quickCardDetect(source,game){
       var ow2=Math.min(tw2,bw2)/Math.max(tw2,bw2),oh2=Math.min(lh2,rh2)/Math.max(lh2,rh2);
       var avgStrong=refs.reduce(function(s,r){return s+r.st.strong},0)/4;
       var avgContrast=refs.reduce(function(s,r){return s+r.st.contrast},0)/4;
-      if(re2<=.14&&ar2>=best.area*.96&&ar2<=.90&&ow2>=.78&&oh2>=.78&&avgStrong>=.40&&avgContrast>=14){
+      var avgTexDelta=refs.reduce(function(s,r){return s+r.st.textureDelta},0)/4;
+      var minTexDelta=Math.min.apply(null,refs.map(function(r){return r.st.textureDelta}));
+      if(re2<=.14&&ar2>=best.area*.94&&ar2<=.90&&ow2>=.78&&oh2>=.78&&
+         avgStrong>=.40&&avgContrast>=14&&avgTexDelta>=-5&&minTexDelta>=-26){
         refined=q2;best.area=ar2;best.re=re2;
         outerVerified=true;
       }
     }
   }
 
-  var conf=.24*Math.min(1,best.area/.62)+.22*best.support+.13*best.contrast+.09*best.uniformity+.15*(best.frameConsistency||0)+.09*Math.max(0,1-best.re/.135)+(outerVerified?.08:0);
+  var conf=.21*Math.min(1,best.area/.62)+.19*best.support+.11*best.contrast+.07*best.uniformity+
+           .13*(best.frameConsistency||0)+.12*(best.physicality||0)+
+           .09*Math.max(0,1-best.re/.135)+(outerVerified?.08:0);
   var full=refined.map(function(p){return {x:p.x/sc,y:p.y/sc}});
   return {found:true,points:full,confidence:Math.max(0,Math.min(1,conf)),outerVerified:outerVerified,width:sw,height:sh};
 }
