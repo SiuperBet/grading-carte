@@ -599,12 +599,13 @@ async function autoDetect(force){
       if(force)setStatus('cc2Astatus',t+' · nessun blocco della pagina');
     });
     if(version!==state.editingVersion&&!force)return;
-    if(res&&res.points&&(res.confidence||0)>=.16){
+    if(res&&res.points&&(res.confidence||0)>=.50){
       state.points=res.points;
       state.editingVersion++;
       saveState();renderCornerButtons();renderA();
       var pct=Math.round((res.confidence||0)*100);
-      setStatus('cc2Astatus','✓ Angoli proposti ('+pct+'%). Controlla visivamente tutti e 4 i punti prima di raddrizzare.','ok');
+      var metodo=res.metrics&&res.metrics.method==='outer-scan'?'perimetro esterno':'controllo geometrico';
+      setStatus('cc2Astatus','✓ Perimetro proposto ('+pct+'%, '+metodo+'). Controlla comunque i 4 punti prima di raddrizzare.','ok');
     }else if(force){
       setStatus('cc2Astatus','Non trovo un bordo sufficientemente affidabile senza rischiare punti sbagliati. Posiziona i 4 angoli manualmente.','warn');
     }
