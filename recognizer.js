@@ -603,12 +603,12 @@ function quickCardDetect(source,game){
   var ratio=game==='ygo'?59/86:63/88,best=null;
   for(var a=0;a<xp.length;a++)for(var b=a+1;b<xp.length;b++){
     var lx=Math.min(xp[a].p,xp[b].p),rx=Math.max(xp[a].p,xp[b].p),rw=rx-lx;
-    if(rw<w*.10||rw>w*.82)continue;
+    if(rw<w*.10||rw>w*.90)continue;
     for(var u=0;u<yp.length;u++)for(var v=u+1;v<yp.length;v++){
       var ty=Math.min(yp[u].p,yp[v].p),by=Math.max(yp[u].p,yp[v].p),rh=by-ty;
-      if(rh<h*.14||rh>h*.90)continue;
+      if(rh<h*.14||rh>h*.95)continue;
       var rr=rw/rh,re=Math.abs(rr-ratio)/ratio;if(re>.25)continue;
-      var area=rw*rh/(w*h);if(area<.025||area>.74)continue;
+      var area=rw*rh/(w*h);if(area<.025||area>.86)continue;
       var cx=(lx+rx)/2,cy=(ty+by)/2,ce=Math.hypot((cx-w/2)/w,(cy-h/2)/h);
       var edge=xp[a].s+xp[b].s+yp[u].s+yp[v].s;
       var score=edge*(1-re*.9)*(1-Math.min(.36,ce*.48))*(.82+Math.min(.35,area));
@@ -647,7 +647,7 @@ function quickCardDetect(source,game){
   // Espansione conservativa del 2.2%: meglio includere qualche pixel di sfondo che tagliare il bordo della carta.
   pts=expandQuad(pts,1.022,w,h);
   var area=polyArea(pts)/(w*h);
-  if(area<.02||area>.82)return {found:false,points:null,confidence:0,width:sw,height:sh};
+  if(area<.02||area>.88)return {found:false,points:null,confidence:0,width:sw,height:sh};
   var fullPts=pts.map(function(p){return {x:p.x/sc,y:p.y/sc}});
   var conf=Math.max(0,Math.min(1,(1-best.re)*(.40+Math.min(.60,area*2.7))));
   return {found:true,points:fullPts,confidence:conf,width:sw,height:sh};
@@ -699,6 +699,7 @@ async function prepareImportedPhoto(file,source){
     await yieldPaint();
     var game=rq('rgame').value==='ygo'?'ygo':'poke';
     recDetection=quickCardDetect(recOriginalCanvas,game);
+    if(recDetection&&recDetection.found&&(recDetection.confidence||0)<.38)recDetection={found:false,points:null,confidence:recDetection.confidence||0,width:recOriginalCanvas.width,height:recOriginalCanvas.height};
     recCropFound=!!(recDetection&&recDetection.found);
 
     if(recCropFound){
@@ -777,5 +778,5 @@ rq('rmanualBtn').addEventListener('click',function(){
   rq('riconosci').classList.add('hide');rq('prezzo').classList.remove('hide');
   rq('pgioco').value=rq('rgame').value;rq('pq').value=q;cercaPrezzo();
 });
-})();
 window.addEventListener('resize',function(){if(recDetection&&recDetection.found)setTimeout(drawRecognizerDetection,30)});
+})();
