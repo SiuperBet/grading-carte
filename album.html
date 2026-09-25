@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Album Carte</title>
+<style>
+:root{--bg:#f6f7fb;--fg:#18191d;--panel:#fff;--muted:#69707d;--acc:#315eea;--ok:#14883f;--line:#dfe3ec;--shadow:0 8px 28px #10206014}
+@media(prefers-color-scheme:dark){:root{--bg:#101116;--fg:#f1f2f5;--panel:#1b1d24;--muted:#aeb4c0;--acc:#7d9cff;--ok:#49ce78;--line:#343844;--shadow:0 8px 28px #0006}}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
+main{max-width:1180px;margin:auto;padding:14px 14px 50px}
+.top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+h1{font-size:1.45rem;margin:6px 0} h2{font-size:1rem;margin:0}
+button,.btn,select,input{font:inherit} button,.btn{border:0;border-radius:10px;padding:10px 13px;background:var(--acc);color:white;cursor:pointer;text-decoration:none}
+button.sec,.btn.sec{background:var(--panel);color:var(--fg);border:1px solid var(--line)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:12px;box-shadow:var(--shadow)}
+.note{font-size:.86rem;color:var(--muted);line-height:1.4}
+.controls{display:grid;grid-template-columns:170px 1fr 1fr;gap:8px}
+.controls select,.controls input{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px}.row>*{min-width:0}
+.progress{height:12px;background:var(--line);border-radius:99px;overflow:hidden;flex:1;min-width:140px}.progress>div{height:100%;background:var(--ok);width:0}
+#stats{font-weight:700}.sethead{display:flex;gap:12px;align-items:center}.sethead img{max-width:150px;max-height:58px;object-fit:contain}
+.filters button.active{outline:2px solid var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:10px;margin-top:12px}
+.card{position:relative;background:var(--panel);border:2px solid var(--line);border-radius:13px;padding:8px;overflow:hidden;transition:.15s}
+.card.owned{border-color:var(--ok);box-shadow:0 0 0 2px color-mix(in srgb,var(--ok) 18%,transparent),var(--shadow)}
+.card.missing{opacity:.43;filter:grayscale(.82) saturate(.28)}
+.card img{width:100%;aspect-ratio:63/88;object-fit:contain;border-radius:8px;background:#0001;display:block}
+.card.ygo img{aspect-ratio:59/86}
+.name{font-weight:750;font-size:.88rem;margin-top:6px;line-height:1.2}.meta{font-size:.74rem;color:var(--muted);min-height:32px;margin-top:3px}
+.badge{position:absolute;top:13px;left:13px;background:#111d;color:#fff;border-radius:99px;padding:4px 7px;font-size:.7rem;font-weight:800}
+.owned .badge{background:var(--ok)}
+.card button{width:100%;margin-top:7px;padding:8px;font-size:.8rem}.qty{display:flex;gap:5px;align-items:center;margin-top:6px}.qty button{margin:0;width:auto;flex:1}.qty b{min-width:30px;text-align:center}
+.empty{text-align:center;padding:28px;color:var(--muted)} #status{margin-top:9px}
+@media(max-width:700px){.controls{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sethead{align-items:flex-start}.sethead img{max-width:110px}}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><h1>📚 Album / Collezione</h1><div class="note">Le carte che possiedi restano salvate su questo dispositivo.</div></div>
+    <a class="btn sec" href="index.html">← Grading e prezzi</a>
+  </div>
+
+  <div class="panel">
+    <div class="controls">
+      <select id="game"><option value="poke">Pokémon</option><option value="ygo">Yu-Gi-Oh!</option></select>
+      <input id="setSearch" placeholder="Cerca espansione...">
+      <select id="setSelect"><option>Caricamento espansioni...</option></select>
+    </div>
+    <div id="status" class="note">Carico il catalogo...</div>
+  </div>
+
+  <div id="setPanel" class="panel" style="display:none">
+    <div class="sethead">
+      <img id="setLogo" alt="" style="display:none">
+      <div><h2 id="setTitle"></h2><div id="setMeta" class="note"></div></div>
+    </div>
+    <div class="row">
+      <span id="stats">0 / 0</span>
+      <div class="progress"><div id="bar"></div></div>
+      <span id="pct">0%</span>
+    </div>
+    <div class="row filters">
+      <button class="sec active" data-filter="all">Tutte</button>
+      <button class="sec" data-filter="owned">Le ho</button>
+      <button class="sec" data-filter="missing">Mi mancano</button>
+      <input id="cardSearch" placeholder="Cerca carta, numero o rarità..." style="flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg)">
+    </div>
+  </div>
+
+  <div id="cards" class="grid"></div>
+
+  <div class="panel">
+    <b>Backup collezione</b>
+    <div class="note">Puoi esportare un file JSON e reimportarlo su un altro telefono o browser. L'importazione unisce le carte senza cancellare quelle già presenti.</div>
+    <div class="row">
+      <button id="exportBtn" class="sec">Esporta collezione</button>
+      <button id="importBtn" class="sec">Importa backup</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+    </div>
+  </div>
+
+  <div class="panel note">
+    <b>Fonti catalogo:</b> Pokémon TCG API per Pokémon; YGOPRODeck v7 per Yu-Gi-Oh!. Le immagini Yu-Gi-Oh! vengono memorizzate nella cache del browser per ridurre le richieste ripetute. I prezzi visualizzati nell'album sono solo quelli restituiti dalla fonte per quella stampa, quando disponibili.
+  </div>
+</main>
+<script src="album.js"></script>
+</body>
+</html>
