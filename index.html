@@ -462,12 +462,13 @@ const COND=[
  {k:'Heavily Played (HP)',min:.15,max:.40,nota:'stima di settore, poca concordanza tra le fonti'},
  {k:'Damaged / Poor',min:.05,max:.20,nota:'stima di settore, molto variabile carta per carta'}
 ];
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function apriPrezzo(){
   ['start','fine','cap','cent'].forEach(x=>$(x).classList.add('hide'));
   $('prezzo').classList.remove('hide');$('pcarta').classList.add('hide');$('prisultati').innerHTML='';
 }
 function esciPrezzo(){mostraFine()}
-let PSTATE=null; // ultima ricerca, per "carica altri"
+let PSTATE=null,RISPOKE=[],RISYGO=[]; // ultima ricerca, per "carica altri" e per il click sui risultati
 async function cercaPrezzo(pagina){
   const q=$('pq').value.trim();if(!q){return}
   const st=$('pstato');
@@ -482,8 +483,11 @@ async function cercaPrezzo(pagina){
       const j=await r.json();
       if(pagina===1&&(!j.data||!j.data.length)){st.textContent='Nessuna carta trovata con questo nome o numero.';return}
       st.classList.add('hide');
-      const righe=(j.data||[]).map(c=>`<button class="sec chb pr" onclick='mostraPoke(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
-        <img src="${c.images.small}" loading="lazy"><span>${c.name} — ${c.set.name} (${c.number})</span></button>`).join('');
+      if(pagina===1)RISPOKE=[];
+      const base=RISPOKE.length;
+      RISPOKE=RISPOKE.concat(j.data||[]);
+      const righe=(j.data||[]).map((c,i)=>`<button class="sec chb pr" onclick="mostraPoke(${base+i})">
+        <img src="${c.images.small}" loading="lazy"><span>${esc(c.name)} — ${esc(c.set.name)} (${esc(c.number)})</span></button>`).join('');
       if(pagina===1)$('prisultati').innerHTML=righe;else $('prisultati').insertAdjacentHTML('beforeend',righe);
       const vecchio=document.getElementById('pmore');if(vecchio)vecchio.remove();
       const tot=j.totalCount||0,visti=pagina*20;
@@ -494,8 +498,9 @@ async function cercaPrezzo(pagina){
       const j=await r.json();
       if(!j.data||!j.data.length){st.textContent='Nessuna carta trovata con questo nome.';return}
       st.classList.add('hide');
-      $('prisultati').innerHTML=j.data.slice(0,30).map(c=>`<button class="sec chb pr" onclick='mostraYgo(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
-        <img src="${c.card_images[0].image_url_small}" loading="lazy"><span>${c.name} (${c.type})</span></button>`).join('');
+      RISYGO=j.data.slice(0,30);
+      $('prisultati').innerHTML=RISYGO.map((c,i)=>`<button class="sec chb pr" onclick="mostraYgo(${i})">
+        <img src="${c.card_images[0].image_url_small}" loading="lazy"><span>${esc(c.name)} (${esc(c.type)})</span></button>`).join('');
     }
   }catch(e){
     st.classList.remove('hide');
@@ -516,24 +521,28 @@ function tabellaCond(base,valuta,fonte,aggiornato){
    <tr style="text-align:left;font-size:.8rem;opacity:.7"><th>Condizione</th><th>Prezzo stimato</th><th></th></tr>${righe}</table>
    <p style="font-size:.75rem;opacity:.75;margin-top:6px">Fonte prezzo Near Mint: ${fonte}, aggiornato ${aggiornato||'data non indicata dall\u2019API'}. Le altre righe sono stime, non vendite osservate.</p>`;
 }
-function mostraPoke(c){
+function mostraPoke(i){
+  const c=RISPOKE[i];if(!c)return;
   const tp=c.tcgplayer&&c.tcgplayer.prices,cm=c.cardmarket&&c.cardmarket.prices;
   let base=null,fonte='TCGplayer',agg=c.tcgplayer&&c.tcgplayer.updatedAt;
   if(tp){const v=Object.values(tp).find(x=>x&&x.market!=null);if(v)base=v.market}
   if(base==null&&cm){base=cm.trendPrice||cm.averageSellPrice||null;fonte='Cardmarket';agg=c.cardmarket&&c.cardmarket.updatedAt}
   $('pcarta').classList.remove('hide');
-  $('pcarta').innerHTML=`<div class="msg"><b>${c.name}</b> — ${c.set.name} (${c.number})<br>
+  $('pcarta').innerHTML=`<div class="msg"><b>${esc(c.name)}</b> — ${esc(c.set.name)} (${esc(c.number)})<br>
    <img src="${c.images.small}" style="max-width:140px;border-radius:6px;margin-top:6px">
    ${tabellaCond(base,'$',fonte,agg)}</div>`;
+  $('pcarta').scrollIntoView({behavior:'smooth',block:'start'});
 }
-function mostraYgo(c){
+function mostraYgo(i){
+  const c=RISYGO[i];if(!c)return;
   const p=c.card_prices&&c.card_prices[0];
   let base=null;
   if(p){const vs=[p.tcgplayer_price,p.cardmarket_price,p.ebay_price].map(Number).filter(v=>v>0);if(vs.length)base=vs[0]}
   $('pcarta').classList.remove('hide');
-  $('pcarta').innerHTML=`<div class="msg"><b>${c.name}</b> — ${c.type}<br>
+  $('pcarta').innerHTML=`<div class="msg"><b>${esc(c.name)}</b> — ${esc(c.type)}<br>
    <img src="${c.card_images[0].image_url_small}" style="max-width:140px;border-radius:6px;margin-top:6px">
    ${tabellaCond(base,'$','TCGplayer/Cardmarket (via YGOPRODeck)','data non indicata dall\u2019API')}</div>`;
+  $('pcarta').scrollIntoView({behavior:'smooth',block:'start'});
 }
 $('fileC').onchange=e=>{const f=e.target.files[0];if(f)apriCent(URL.createObjectURL(f));e.target.value=''};
 $('btnStart').onclick=avvia;$('btnShot').onclick=scatta;
