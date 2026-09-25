@@ -501,7 +501,7 @@ window.apriRiconoscimento=function(src){
   ['start','fine','cap','cent','prezzo'].forEach(function(id){var x=rq(id);if(x)x.classList.add('hide')});
   rq('riconosci').classList.remove('hide');rq('rresults').innerHTML='';rq('rstatus').classList.add('hide');
   rq('rfront').style.display=(typeof foto!=='undefined'&&foto[0])?'':'none';
-  if(recUrl){rq('rpreview').src=recUrl;rq('rpreview').style.display='';rq('rphotoActions').classList.remove('hide')}
+  if(recUrl){rq('rpreview').src=recUrl;rq('rpreviewWrap').style.display='';rq('rphotoActions').classList.remove('hide');setTimeout(drawRecognizerDetection,50)}
   if(src)recognize(src);
 }
 window.esciRiconoscimento=function(){
@@ -530,27 +530,58 @@ function downscaleImage(im,maxDim){
   c.getContext('2d').drawImage(im,0,0,c.width,c.height);
   return c;
 }
-function quickCardCrop(source,game){
+function fitXofY(points){
+  if(!points||points.length<3)return null;
+  var sy=0,sx=0,syy=0,syx=0,n=points.length;
+  points.forEach(function(p){sy+=p.y;sx+=p.x;syy+=p.y*p.y;syx+=p.y*p.x});
+  var den=n*syy-sy*sy;if(Math.abs(den)<1e-6)return null;
+  var a=(n*syx-sy*sx)/den,b=(sx-a*sy)/n;
+  return {a:a,b:b,n:n};
+}
+function fitYofX(points){
+  if(!points||points.length<3)return null;
+  var sx=0,sy=0,sxx=0,sxy=0,n=points.length;
+  points.forEach(function(p){sx+=p.x;sy+=p.y;sxx+=p.x*p.x;sxy+=p.x*p.y});
+  var den=n*sxx-sx*sx;if(Math.abs(den)<1e-6)return null;
+  var a=(n*sxy-sx*sy)/den,b=(sy-a*sx)/n;
+  return {a:a,b:b,n:n};
+}
+function intersectVH(v,h){
+  // x = v.a*y + v.b ; y = h.a*x + h.b
+  var den=1-v.a*h.a;if(Math.abs(den)<1e-6)return null;
+  var x=(v.a*h.b+v.b)/den,y=h.a*x+h.b;
+  return {x:x,y:y};
+}
+function polyArea(p){
+  var a=0;for(var i=0;i<p.length;i++){var q=p[(i+1)%p.length];a+=p[i].x*q.y-p[i].y*q.x}
+  return Math.abs(a)/2;
+}
+function expandQuad(points,f,w,h){
+  var cx=points.reduce(function(s,p){return s+p.x},0)/4,cy=points.reduce(function(s,p){return s+p.y},0)/4;
+  return points.map(function(p){
+    return {x:Math.max(0,Math.min(w-1,cx+(p.x-cx)*f)),y:Math.max(0,Math.min(h-1,cy+(p.y-cy)*f))};
+  });
+}
+function quickCardDetect(source,game){
   var sw=source.width,sh=source.height;
-  if(!sw||!sh)return {found:false,canvas:source,confidence:0};
+  if(!sw||!sh)return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  // Analisi molto piccola: evita blocchi su Samsung Internet.
-  var max=320,sc=Math.min(1,max/Math.max(sw,sh));
-  var w=Math.max(80,Math.round(sw*sc)),h=Math.max(80,Math.round(sh*sc));
+  var max=340,sc=Math.min(1,max/Math.max(sw,sh));
+  var w=Math.max(90,Math.round(sw*sc)),h=Math.max(90,Math.round(sh*sc));
   var c=document.createElement('canvas');c.width=w;c.height=h;
   var ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,w,h);
   var d=ctx.getImageData(0,0,w,h).data,g=new Float32Array(w*h);
   for(var i=0,p=0;i<g.length;i++,p+=4)g[i]=.299*d[p]+.587*d[p+1]+.114*d[p+2];
 
   var vx=new Float32Array(w),hy=new Float32Array(h);
-  var y0=Math.round(h*.04),y1=Math.round(h*.96),x0=Math.round(w*.04),x1=Math.round(w*.96);
+  var x0=Math.round(w*.02),x1=Math.round(w*.98),y0=Math.round(h*.02),y1=Math.round(h*.98);
   for(var y=y0;y<y1;y+=2){
     var row=y*w;
     for(var x=2;x<w-2;x++)vx[x]+=Math.abs(g[row+x+1]-g[row+x-1]);
   }
-  for(var y2=2;y2<h-2;y2++){
-    var row2=y2*w;
-    for(var x2=x0;x2<x1;x2+=2)hy[y2]+=Math.abs(g[row2+x2+w]-g[row2+x2-w]);
+  for(var yy=2;yy<h-2;yy++){
+    var row2=yy*w;
+    for(var xx=x0;xx<x1;xx+=2)hy[yy]+=Math.abs(g[row2+xx+w]-g[row2+xx-w]);
   }
   function smooth(a){
     var b=new Float32Array(a.length);
@@ -558,87 +589,127 @@ function quickCardCrop(source,game){
     return b;
   }
   vx=smooth(vx);hy=smooth(hy);
-
   function topPeaks(a,margin,count){
-    var arr=[];
-    for(var i=margin;i<a.length-margin;i++)arr.push({p:i,s:a[i]});
+    var arr=[];for(var i=margin;i<a.length-margin;i++)arr.push({p:i,s:a[i]});
     arr.sort(function(a,b){return b.s-a.s});
-    var out=[],gap=Math.max(4,Math.round(a.length*.025));
+    var out=[],gap=Math.max(5,Math.round(a.length*.03));
     for(var k=0;k<arr.length&&out.length<count;k++){
-      var z=arr[k];
-      if(out.every(function(o){return Math.abs(o.p-z.p)>=gap}))out.push(z);
+      if(out.every(function(o){return Math.abs(o.p-arr[k].p)>=gap}))out.push(arr[k]);
     }
     return out;
   }
-  var xp=topPeaks(vx,Math.max(3,Math.round(w*.03)),22);
-  var yp=topPeaks(hy,Math.max(3,Math.round(h*.03)),22);
+  var xp=topPeaks(vx,Math.max(3,Math.round(w*.02)),24);
+  var yp=topPeaks(hy,Math.max(3,Math.round(h*.02)),24);
   var ratio=game==='ygo'?59/86:63/88,best=null;
-
   for(var a=0;a<xp.length;a++)for(var b=a+1;b<xp.length;b++){
     var lx=Math.min(xp[a].p,xp[b].p),rx=Math.max(xp[a].p,xp[b].p),rw=rx-lx;
-    if(rw<w*.12||rw>w*.72)continue;
+    if(rw<w*.10||rw>w*.82)continue;
     for(var u=0;u<yp.length;u++)for(var v=u+1;v<yp.length;v++){
       var ty=Math.min(yp[u].p,yp[v].p),by=Math.max(yp[u].p,yp[v].p),rh=by-ty;
-      if(rh<h*.15||rh>h*.82)continue;
-      var rr=rw/rh,ratioErr=Math.abs(rr-ratio)/ratio;
-      if(ratioErr>.23)continue;
-      var area=(rw*rh)/(w*h);
-      if(area<.025||area>.55)continue;
-      var cx=(lx+rx)/2,cy=(ty+by)/2;
-      var centerErr=Math.hypot((cx-w/2)/w,(cy-h/2)/h);
+      if(rh<h*.14||rh>h*.90)continue;
+      var rr=rw/rh,re=Math.abs(rr-ratio)/ratio;if(re>.25)continue;
+      var area=rw*rh/(w*h);if(area<.025||area>.74)continue;
+      var cx=(lx+rx)/2,cy=(ty+by)/2,ce=Math.hypot((cx-w/2)/w,(cy-h/2)/h);
       var edge=xp[a].s+xp[b].s+yp[u].s+yp[v].s;
-      var score=edge*(1-ratioErr*.85)*(1-Math.min(.42,centerErr*.65))*(.82+Math.min(.25,area));
-      if(!best||score>best.score)best={x:lx,y:ty,w:rw,h:rh,score:score,edge:edge,ratioErr:ratioErr,area:area};
+      var score=edge*(1-re*.9)*(1-Math.min(.36,ce*.48))*(.82+Math.min(.35,area));
+      if(!best||score>best.score)best={lx:lx,rx:rx,ty:ty,by:by,rw:rw,rh:rh,score:score,re:re,area:area};
     }
   }
+  if(!best)return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  if(!best)return {found:false,canvas:source,confidence:0};
-  var pad=.018,bx=Math.max(0,best.x-best.w*pad),by=Math.max(0,best.y-best.h*pad);
-  var bw=Math.min(w-bx,best.w*(1+2*pad)),bh=Math.min(h-by,best.h*(1+2*pad));
-  var ox=bx/sc,oy=by/sc,ow=bw/sc,oh=bh/sc;
+  // Rifinisce ogni lato su più sezioni, così segue la prospettiva anziché usare un rettangolo fisso.
+  function vEdge(x,y){x=Math.max(2,Math.min(w-3,x|0));y=Math.max(1,Math.min(h-2,y|0));return Math.abs(g[y*w+x+1]-g[y*w+x-1])}
+  function hEdge(x,y){x=Math.max(1,Math.min(w-2,x|0));y=Math.max(2,Math.min(h-3,y|0));return Math.abs(g[(y+1)*w+x]-g[(y-1)*w+x])}
+  var leftPts=[],rightPts=[],topPts=[],bottomPts=[];
+  var xr=Math.max(5,Math.round(best.rw*.10)),yr=Math.max(5,Math.round(best.rh*.10));
+  for(var si=0;si<13;si++){
+    var yy=best.ty+best.rh*(.08+.84*si/12),bl={s:-1,x:best.lx},br={s:-1,x:best.rx};
+    for(var xx=Math.max(2,best.lx-xr);xx<=Math.min(w-3,best.lx+xr);xx++){var es=vEdge(xx,yy);if(es>bl.s)bl={s:es,x:xx}}
+    for(var xx2=Math.max(2,best.rx-xr);xx2<=Math.min(w-3,best.rx+xr);xx2++){var es2=vEdge(xx2,yy);if(es2>br.s)br={s:es2,x:xx2}}
+    leftPts.push({x:bl.x,y:yy,s:bl.s});rightPts.push({x:br.x,y:yy,s:br.s});
+  }
+  for(var sj=0;sj<13;sj++){
+    var xx3=best.lx+best.rw*(.08+.84*sj/12),bt={s:-1,y:best.ty},bb={s:-1,y:best.by};
+    for(var yy2=Math.max(2,best.ty-yr);yy2<=Math.min(h-3,best.ty+yr);yy2++){var es3=hEdge(xx3,yy2);if(es3>bt.s)bt={s:es3,y:yy2}}
+    for(var yy3=Math.max(2,best.by-yr);yy3<=Math.min(h-3,best.by+yr);yy3++){var es4=hEdge(xx3,yy3);if(es4>bb.s)bb={s:es4,y:yy3}}
+    topPts.push({x:xx3,y:bt.y,s:bt.s});bottomPts.push({x:xx3,y:bb.y,s:bb.s});
+  }
+  function robust(list){
+    var ss=list.map(function(p){return p.s}).sort(function(a,b){return a-b});
+    var cut=ss[Math.floor(ss.length*.35)]||0;
+    return list.filter(function(p){return p.s>=cut});
+  }
+  var L=fitXofY(robust(leftPts)),R=fitXofY(robust(rightPts)),T=fitYofX(robust(topPts)),B=fitYofX(robust(bottomPts));
+  if(!L||!R||!T||!B)return {found:false,points:null,confidence:0,width:sw,height:sh};
+  var pts=[intersectVH(L,T),intersectVH(R,T),intersectVH(R,B),intersectVH(L,B)];
+  if(pts.some(function(p){return !p||!Number.isFinite(p.x)||!Number.isFinite(p.y)}))return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  var outH=Math.min(1100,Math.max(500,Math.round(oh)));
-  var outW=Math.max(1,Math.round(outH*(ow/oh)));
-  var out=document.createElement('canvas');out.width=outW;out.height=outH;
-  out.getContext('2d').drawImage(source,ox,oy,ow,oh,0,0,outW,outH);
-
-  var conf=Math.max(0,Math.min(1,(1-best.ratioErr)*(.35+Math.min(.65,best.area*3))));
-  return {found:true,canvas:out,confidence:conf,bbox:{x:ox,y:oy,w:ow,h:oh}};
+  // Espansione conservativa del 2.2%: meglio includere qualche pixel di sfondo che tagliare il bordo della carta.
+  pts=expandQuad(pts,1.022,w,h);
+  var area=polyArea(pts)/(w*h);
+  if(area<.02||area>.82)return {found:false,points:null,confidence:0,width:sw,height:sh};
+  var fullPts=pts.map(function(p){return {x:p.x/sc,y:p.y/sc}});
+  var conf=Math.max(0,Math.min(1,(1-best.re)*(.40+Math.min(.60,area*2.7))));
+  return {found:true,points:fullPts,confidence:conf,width:sw,height:sh};
+}
+function detectedCropCanvas(source,det,padFactor){
+  if(!det||!det.found||!det.points)return source;
+  var xs=det.points.map(function(p){return p.x}),ys=det.points.map(function(p){return p.y});
+  var minX=Math.min.apply(null,xs),maxX=Math.max.apply(null,xs),minY=Math.min.apply(null,ys),maxY=Math.max.apply(null,ys);
+  var bw=maxX-minX,bh=maxY-minY,pad=padFactor==null?.035:padFactor;
+  minX=Math.max(0,minX-bw*pad);maxX=Math.min(source.width,maxX+bw*pad);
+  minY=Math.max(0,minY-bh*pad);maxY=Math.min(source.height,maxY+bh*pad);
+  var ow=maxX-minX,oh=maxY-minY,out=document.createElement('canvas');
+  var s=Math.min(1,1300/Math.max(ow,oh));out.width=Math.max(1,Math.round(ow*s));out.height=Math.max(1,Math.round(oh*s));
+  out.getContext('2d').drawImage(source,minX,minY,ow,oh,0,0,out.width,out.height);
+  return out;
+}
+function drawRecognizerDetection(){
+  var wrap=rq('rpreviewWrap'),img=rq('rpreview'),cv=rq('rDetectOverlay');
+  if(!wrap||!img||!cv||!recDetection||!recDetection.found||!recDetection.points||!img.naturalWidth)return;
+  var W=wrap.clientWidth,H=wrap.clientHeight;cv.width=Math.max(1,Math.round(W*devicePixelRatio));cv.height=Math.max(1,Math.round(H*devicePixelRatio));
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  var ctx=cv.getContext('2d');ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);ctx.clearRect(0,0,W,H);
+  var nw=img.naturalWidth,nh=img.naturalHeight,scale=Math.min(W/nw,H/nh),dw=nw*scale,dh=nh*scale,ox=(W-dw)/2,oy=(H-dh)/2;
+  var p=recDetection.points.map(function(q){return {x:ox+q.x*scale,y:oy+q.y*scale}});
+  ctx.lineWidth=3;ctx.strokeStyle='#39e477';ctx.fillStyle='#39e477';
+  ctx.beginPath();p.forEach(function(q,i){if(i)ctx.lineTo(q.x,q.y);else ctx.moveTo(q.x,q.y)});ctx.closePath();ctx.stroke();
+  p.forEach(function(q){ctx.beginPath();ctx.arc(q.x,q.y,5,0,Math.PI*2);ctx.fill()});
 }
 
-var recCropFound=false;
+var recCropFound=false,recDetection=null,recOriginalCanvas=null,recOcrUrl=null;
 async function prepareImportedPhoto(file,source){
   if(!file)return;
   setStatus(source==='gallery'?'Carico la foto dalla galleria…':'Carico la foto scattata…');
-  rq('rresults').innerHTML='';
-  rq('rocr').value='';
-  rq('rphotoActions').classList.remove('hide');
+  rq('rresults').innerHTML='';rq('rocr').value='';rq('rphotoActions').classList.remove('hide');
+  rq('rDetectLegend').classList.add('hide');
+  recDetection=null;recCropFound=false;recOcrUrl=null;
   try{
-    var blobUrl=URL.createObjectURL(file);
-    recUrl=blobUrl;
-    rq('rpreview').src=blobUrl;
-    rq('rpreview').style.display='';
-    await yieldPaint();
-
-    var im=await loadImage(blobUrl);
-    var work=downscaleImage(im,1200);
+    var blobUrl=URL.createObjectURL(file),im=await loadImage(blobUrl);
+    recOriginalCanvas=downscaleImage(im,1400);
     try{URL.revokeObjectURL(blobUrl)}catch(e){}
 
-    setStatus('Cerco la carta nell’immagine…');
-    await yieldPaint();
-    var game=rq('rgame').value==='ygo'?'ygo':'poke';
-    var crop=quickCardCrop(work,game);
-    recCropFound=!!(crop&&crop.found);
-    var finalCanvas=recCropFound?crop.canvas:work;
-    var finalUrl=finalCanvas.toDataURL('image/jpeg',.86);
-    recUrl=finalUrl;
-    rq('rpreview').src=finalUrl;
+    // La foto mostrata e usata per la centratura è SEMPRE quella completa.
+    recUrl=recOriginalCanvas.toDataURL('image/jpeg',.88);
+    rq('rpreview').src=recUrl;rq('rpreviewWrap').style.display='';
+    await new Promise(function(resolve){rq('rpreview').onload=function(){resolve()};if(rq('rpreview').complete)resolve()});
     await yieldPaint();
 
+    setStatus('Cerco i quattro bordi della carta senza ritagliare la foto…');
+    await yieldPaint();
+    var game=rq('rgame').value==='ygo'?'ygo':'poke';
+    recDetection=quickCardDetect(recOriginalCanvas,game);
+    recCropFound=!!(recDetection&&recDetection.found);
+
     if(recCropFound){
-      setStatus('✓ Carta individuata. Ora scegli cosa fare: riconoscila, apri la centratura oppure salvala come fronte.');
+      recOcrUrl=detectedCropCanvas(recOriginalCanvas,recDetection,.045).toDataURL('image/jpeg',.9);
+      drawRecognizerDetection();
+      rq('rDetectLegend').classList.remove('hide');
+      var pct=Math.round((recDetection.confidence||0)*100);
+      setStatus('✓ Bordo carta rilevato ('+pct+'%). La foto completa resta intatta: controlla la linea verde oppure apri Centratura per correggere i 4 angoli.');
     }else{
-      setStatus('Foto caricata. Non ho isolato la carta con sufficiente sicurezza: puoi comunque riconoscerla oppure aprire la centratura manuale.');
+      var ov=rq('rDetectOverlay');if(ov){var oc=ov.getContext('2d');oc.clearRect(0,0,ov.width,ov.height)}
+      setStatus('Foto completa caricata. Non ho trovato i 4 bordi con sufficiente sicurezza: apri Centratura e posiziona manualmente gli angoli sulla foto intera.');
     }
   }catch(e){
     setStatus('Non riesco a caricare questa foto: '+(e&&e.message?e.message:'errore sconosciuto'),true);
@@ -656,7 +727,8 @@ window.riconosciFotoImportata=async function(){
   if(b){b.disabled=true;b.textContent='Riconosco…'}
   try{
     await yieldPaint();
-    await recognize(recUrl);
+    // Solo l'OCR usa una copia locale più stretta; anteprima e centratura restano sulla foto completa.
+    await recognize(recOcrUrl||recUrl);
   }finally{
     if(b){b.disabled=false;b.textContent='✨ Riconosci e valuta'}
   }
@@ -667,6 +739,9 @@ window.usaFotoImportataPerCentratura=function(){
     // La foto importata non deve avviare OpenCV automaticamente.
     window.__galleryCenterOnce=true;
     window.__galleryCropFound=recCropFound;
+    window.__galleryDetectedCorners=recDetection&&recDetection.found
+      ?recDetection.points.map(function(p){return {x:p.x/recDetection.width,y:p.y/recDetection.height}})
+      :null;
     var g=document.getElementById('gioco');
     if(g)g.value=rq('rgame').value==='ygo'?'59,86':'63,88';
     rq('riconosci').classList.add('hide');
@@ -703,3 +778,4 @@ rq('rmanualBtn').addEventListener('click',function(){
   rq('pgioco').value=rq('rgame').value;rq('pq').value=q;cercaPrezzo();
 });
 })();
+window.addEventListener('resize',function(){if(recDetection&&recDetection.found)setTimeout(drawRecognizerDetection,30)});
