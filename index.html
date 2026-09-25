@@ -39,7 +39,7 @@ video{width:100%;height:100%;object-fit:cover}
 .pr{display:flex;align-items:center;gap:10px;text-align:left;margin-top:4px}
 .pr img{width:36px;border-radius:4px;flex-shrink:0}
 .pr span{font-size:.9rem}
-.ptable{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}.ptable th,.ptable td{padding:6px 5px;border-bottom:1px solid #8883;text-align:left;vertical-align:top}.ptable th{font-size:.75rem;opacity:.72}.pbox{background:var(--card);padding:10px;border-radius:9px;margin-top:9px}.pactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pactions a,.pactions button{width:auto;margin:0;padding:8px 10px;font-size:.78rem}.plink{display:inline-block;background:var(--card);color:var(--fg);border-radius:8px;padding:7px 9px;text-decoration:none;border:1px solid #8883}.mini{width:auto;padding:5px 7px;margin:0;font-size:.72rem}.hide{display:none}
+.ptable{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}.ptable th,.ptable td{padding:6px 5px;border-bottom:1px solid #8883;text-align:left;vertical-align:top}.ptable th{font-size:.75rem;opacity:.72}.pbox{background:var(--card);padding:10px;border-radius:9px;margin-top:9px}.pactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pactions a,.pactions button{width:auto;margin:0;padding:8px 10px;font-size:.78rem}.plink{display:inline-block;background:var(--card);color:var(--fg);border-radius:8px;padding:7px 9px;text-decoration:none;border:1px solid #8883}.mini{width:auto;padding:5px 7px;margin:0;font-size:.72rem}.rprev{width:100%;max-height:440px;object-fit:contain;background:#111;border-radius:10px;margin-top:8px}.rmanual{display:flex;gap:6px;margin-top:8px}.rmanual input{flex:1;min-width:0;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884;background:var(--bg);color:var(--fg)}.hide{display:none}
 </style>
 </head>
 <body>
@@ -54,6 +54,7 @@ video{width:100%;height:100%;object-fit:cover}
   <button class="sec" type="button" onclick="document.getElementById('fileC').click()">Solo centratura: scegli una foto dalla galleria</button>
   <input id="fileC" type="file" accept="image/*" class="hide">
   <button class="sec" onclick="mostraFine()">Vai a centratura/prezzi (senza scattare foto ora)</button>
+  <button class="sec" onclick="apriRiconoscimento()">📷 Riconosci carta da foto</button>
   <button class="sec" onclick="location.href='album.html'">📚 Apri album / collezione</button>
 </div>
 
@@ -74,6 +75,7 @@ video{width:100%;height:100%;object-fit:cover}
   <button onclick="apriCent(foto[0])">Misura centratura del fronte</button>
   <button class="sec" onclick="apriCent(foto[1])">Misura centratura del retro</button>
   <button class="sec" onclick="apriPrezzo()">Cerca prezzi e confronti di mercato</button>
+  <button class="sec" onclick="apriRiconoscimento(foto[0])">📷 Riconosci automaticamente il fronte</button>
   <button class="sec" onclick="location.href='album.html'">📚 Album / collezione</button>
   <div class="msg">Angoli, bordi e superficie arrivano nelle prossime fasi.</div>
 </div>
@@ -91,6 +93,28 @@ video{width:100%;height:100%;object-fit:cover}
   <div id="prisultati"></div>
   <div id="pcarta" class="hide"></div>
   <button class="sec" onclick="esciPrezzo()">Indietro</button>
+</div>
+
+<div id="riconosci" class="hide">
+  <h2 style="margin:4px 0">Riconosci carta da foto</h2>
+  <div class="msg"><b>100% gratuito.</b> Il riconoscimento del testo viene eseguito nel browser con OCR open source. La foto non viene inviata a un servizio OCR. Dopo la lettura, solo nome/numero vengono usati per interrogare i cataloghi gratuiti già usati dall'app.<br><br>
+  Il risultato è una <b>proposta da verificare</b>: prima di aggiungere la carta controlla sempre immagine, espansione e numero.</div>
+  <label style="display:block;margin-top:8px">Gioco
+    <select id="rgame" style="font:inherit;padding:8px;width:100%;margin-top:4px"><option value="poke">Pokémon</option><option value="ygo">Yu-Gi-Oh!</option></select>
+  </label>
+  <button id="rfront" class="sec" onclick="usaFronteOCR()" style="display:none">Usa la foto “Fronte” già scattata</button>
+  <button class="sec" onclick="document.getElementById('rfile').click()">Scatta / scegli una foto della carta</button>
+  <input id="rfile" type="file" accept="image/*" capture="environment" class="hide">
+  <img id="rpreview" class="rprev" alt="Foto carta" style="display:none">
+  <div id="rstatus" class="msg hide"></div>
+  <div id="rresults"></div>
+  <div class="pbox">
+    <b>Ricerca assistita</b>
+    <div class="prog">Se l'OCR ha letto male una lettera o un numero, correggilo qui e usa la ricerca normale.</div>
+    <div class="rmanual"><input id="rmanual" placeholder="Nome, numero o codice carta"><button id="rmanualBtn" style="width:auto;margin:0">Cerca</button></div>
+    <details style="margin-top:8px"><summary class="prog">Mostra testo letto dall'OCR</summary><textarea id="rocr" readonly style="width:100%;min-height:120px;margin-top:6px;font:inherit;padding:8px;border-radius:8px;border:1px solid #8884;background:var(--bg);color:var(--fg)"></textarea></details>
+  </div>
+  <button class="sec" onclick="esciRiconoscimento()">Indietro</button>
 </div>
 
 <div id="cent" class="hide">
@@ -220,7 +244,7 @@ function fine(){
   $('start').classList.add('hide');$('cap').classList.add('hide');mostraFine();
 }
 function mostraFine(){
-  ['start','cap','cent','prezzo'].forEach(x=>$(x).classList.add('hide'));
+  ['start','cap','cent','prezzo','riconosci'].forEach(x=>$(x).classList.add('hide'));
   $('fine').classList.remove('hide');
   $('grid').innerHTML=STEPS.map((s,k)=>foto[k]?`<div><img src="${foto[k]}"><b>${s.t}</b><br><a href="#" onclick="rifai(${k});return false">Rifai</a></div>`:`<div><b>${s.t}</b><br>non scattata</div>`).join('');
 }
@@ -466,7 +490,7 @@ const COND=[
 ];
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function apriPrezzo(){
-  ['start','fine','cap','cent'].forEach(x=>$(x).classList.add('hide'));
+  ['start','fine','cap','cent','riconosci'].forEach(x=>$(x).classList.add('hide'));
   $('prezzo').classList.remove('hide');$('pcarta').classList.add('hide');$('prisultati').innerHTML='';
 }
 function esciPrezzo(){mostraFine()}
@@ -628,5 +652,6 @@ $('file').onchange=e=>{
   im.src=URL.createObjectURL(f);e.target.value='';
 };
 </script>
+<script src="recognizer.js"></script>
 </body>
 </html>
