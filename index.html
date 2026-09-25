@@ -39,7 +39,7 @@ video{width:100%;height:100%;object-fit:cover}
 .pr{display:flex;align-items:center;gap:10px;text-align:left;margin-top:4px}
 .pr img{width:36px;border-radius:4px;flex-shrink:0}
 .pr span{font-size:.9rem}
-.hide{display:none}
+.ptable{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}.ptable th,.ptable td{padding:6px 5px;border-bottom:1px solid #8883;text-align:left;vertical-align:top}.ptable th{font-size:.75rem;opacity:.72}.pbox{background:var(--card);padding:10px;border-radius:9px;margin-top:9px}.pactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pactions a,.pactions button{width:auto;margin:0;padding:8px 10px;font-size:.78rem}.plink{display:inline-block;background:var(--card);color:var(--fg);border-radius:8px;padding:7px 9px;text-decoration:none;border:1px solid #8883}.mini{width:auto;padding:5px 7px;margin:0;font-size:.72rem}.hide{display:none}
 </style>
 </head>
 <body>
@@ -54,6 +54,7 @@ video{width:100%;height:100%;object-fit:cover}
   <button class="sec" type="button" onclick="document.getElementById('fileC').click()">Solo centratura: scegli una foto dalla galleria</button>
   <input id="fileC" type="file" accept="image/*" class="hide">
   <button class="sec" onclick="mostraFine()">Vai a centratura/prezzi (senza scattare foto ora)</button>
+  <button class="sec" onclick="location.href='album.html'">📚 Apri album / collezione</button>
 </div>
 
 <div id="cap" class="hide">
@@ -72,14 +73,15 @@ video{width:100%;height:100%;object-fit:cover}
   <div class="grid" id="grid"></div>
   <button onclick="apriCent(foto[0])">Misura centratura del fronte</button>
   <button class="sec" onclick="apriCent(foto[1])">Misura centratura del retro</button>
-  <button class="sec" onclick="apriPrezzo()">Cerca prezzo carta (non gradata)</button>
+  <button class="sec" onclick="apriPrezzo()">Cerca prezzi e confronti di mercato</button>
+  <button class="sec" onclick="location.href='album.html'">📚 Album / collezione</button>
   <div class="msg">Angoli, bordi e superficie arrivano nelle prossime fasi.</div>
 </div>
 
 <div id="prezzo" class="hide">
-  <h2 style="margin:4px 0">Prezzo (carta non gradata)</h2>
-  <div class="msg">Cerca il nome della carta. I prezzi vengono da API pubbliche gratuite (Pokémon TCG API / YGOPRODeck), in tempo reale.<br><br>
-  <b>Attenzione:</b> è il prezzo di mercato riportato dall'API, riferito a una carta in condizioni generalmente buone (vicino a Near Mint). Le altre condizioni sono <b>stime indicative</b>, calcolate applicando intervalli usati nel settore (non prezzi osservati davvero su quella carta). Stima, non un valore garantito.</div>
+  <h2 style="margin:4px 0">Prezzi e confronti di mercato</h2>
+  <div class="msg">La pagina mostra <b>separatamente</b> i dati restituiti dalle fonti: TCGplayer (USD), Cardmarket (EUR) e, per Yu-Gi-Oh!, i prezzi YGOPRODeck per singola stampa/set e i prezzi-venditore disponibili.<br><br>
+  <b>Nessun prezzo viene inventato o convertito tra valute.</b> Le eventuali fasce NM/LP/MP/HP/Damaged restano calcoli indicativi e sono sempre etichettate come stime. Per un controllo ulteriore trovi anche il collegamento alle vendite concluse eBay.</div>
   <div style="display:flex;gap:6px">
     <input id="pq" placeholder="es. Charizard, oppure 6/102" style="flex:1;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884">
     <select id="pgioco" style="font:inherit;padding:6px"><option value="poke">Pokémon</option><option value="ygo">Yu-Gi-Oh</option></select>
@@ -456,7 +458,7 @@ attacca(VA);attacca(VB);
 // Intervalli dichiarati (stime di settore, non vendite reali osservate), fonte: guide condizione
 // TCGplayer/community (LP 70-85%, MP 40-70%, HP e DMG: nessun intervallo concorde in fonti pubbliche -> stimati per difetto, dichiarati come tali)
 const COND=[
- {k:'Near Mint (NM)',min:1,max:1,nota:'prezzo di mercato riportato dall\u2019API'},
+ {k:'Near Mint (NM)',min:1,max:1,nota:'usa il prezzo di riferimento scelto; non implica una vendita NM osservata'},
  {k:'Lightly Played (LP)',min:.70,max:.85,nota:'stima di settore'},
  {k:'Moderately Played (MP)',min:.40,max:.70,nota:'stima di settore'},
  {k:'Heavily Played (HP)',min:.15,max:.40,nota:'stima di settore, poca concordanza tra le fonti'},
@@ -510,38 +512,110 @@ async function cercaPrezzo(pagina){
       : 'Il servizio prezzi ha risposto con un errore ('+e.message+'). Riprova tra poco: potrebbe essere un limite temporaneo dell\u2019API gratuita.';
   }
 }
+function num(v){const n=Number(v);return Number.isFinite(n)&&n>0?n:null}
+function soldi(v,s){const n=num(v);return n==null?'—':s+n.toFixed(2)}
+function linkEsterno(url,label){return url?'<a class="plink" target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">'+esc(label)+'</a>':''}
+function ebaySold(q){return 'https://www.ebay.it/sch/i.html?_nkw='+encodeURIComponent(q)+'&LH_Sold=1&LH_Complete=1'}
+function cardmarketYgo(q){return 'https://www.cardmarket.com/en/YuGiOh/Products/Search?searchString='+encodeURIComponent(q)}
 function tabellaCond(base,valuta,fonte,aggiornato){
-  if(base==null)return '<p>Questa versione della carta non ha un prezzo di mercato disponibile nell\u2019API. Prova un\u2019altra versione dall\u2019elenco.</p>';
-  const righe=COND.map(c=>{
-    const lo=(base*c.min).toFixed(2),hi=(base*c.max).toFixed(2);
-    const val=c.min===c.max?valuta+lo:valuta+lo+' – '+valuta+hi;
-    return `<tr><td>${c.k}</td><td>${val}</td><td style="font-size:.75rem;opacity:.75">${c.nota}</td></tr>`;
+  base=num(base);
+  if(base==null)return '<p>Non c\u2019è un prezzo di riferimento utilizzabile per questa stampa/variante.</p>';
+  const righe=COND.map(x=>{
+    const lo=(base*x.min).toFixed(2),hi=(base*x.max).toFixed(2);
+    const val=x.min===x.max?valuta+lo:valuta+lo+' – '+valuta+hi;
+    return '<tr><td>'+x.k+'</td><td><b>'+val+'</b></td><td>'+x.nota+'</td></tr>';
   }).join('');
-  return `<table style="width:100%;border-collapse:collapse;margin-top:8px">
-   <tr style="text-align:left;font-size:.8rem;opacity:.7"><th>Condizione</th><th>Prezzo stimato</th><th></th></tr>${righe}</table>
-   <p style="font-size:.75rem;opacity:.75;margin-top:6px">Fonte prezzo Near Mint: ${fonte}, aggiornato ${aggiornato||'data non indicata dall\u2019API'}. Le altre righe sono stime, non vendite osservate.</p>`;
+  return '<div class="pbox"><b>Stima indicativa per condizione</b><div class="prog">Base: '+esc(fonte)+(aggiornato?' · aggiornamento fonte '+esc(aggiornato):'')+'</div>'+
+   '<table class="ptable"><tr><th>Condizione</th><th>Fascia</th><th>Come è ottenuta</th></tr>'+righe+'</table>'+
+   '<div class="prog" style="margin-top:6px">Queste fasce sono calcoli percentuali sul prezzo di riferimento: non sono vendite osservate della carta in ciascuna condizione.</div></div>';
+}
+function leggiAlbum(){
+  try{const x=JSON.parse(localStorage.getItem('gradingCarte.collection.v2')||'{}');return x&&typeof x==='object'&&!Array.isArray(x)?x:{}}catch(e){return {}}
+}
+function salvaAlbum(key,meta){
+  try{
+    const x=leggiAlbum(),old=x[key];
+    x[key]={...meta,qty:old&&Number(old.qty)>0?Number(old.qty):1,updatedAt:new Date().toISOString()};
+    localStorage.setItem('gradingCarte.collection.v2',JSON.stringify(x));
+    return true;
+  }catch(e){return false}
+}
+window.aggiungiPoke=function(i){
+  const c=RISPOKE[i];if(!c)return;
+  const ok=salvaAlbum('poke:'+c.id,{game:'poke',name:c.name,number:c.number||'',setName:c.set&&c.set.name||'',setCode:c.set&&c.set.id||''});
+  const el=document.getElementById('padd');if(el)el.textContent=ok?'✓ Salvata nell\u2019album':'Salvataggio non riuscito';
+}
+window.aggiungiYgo=function(i,j){
+  const c=RISYGO[i],s=c&&c.card_sets&&c.card_sets[j];if(!c||!s)return;
+  const ok=salvaAlbum('ygo:'+s.set_code+':'+c.id,{game:'ygo',name:c.name,number:s.set_code||'',setName:s.set_name||'',setCode:s.set_code||''});
+  const el=document.getElementById('yadd'+j);if(el)el.textContent=ok?'✓ Nell\u2019album':'Errore salvataggio';
+}
+const PVAR={normal:'Normale',holofoil:'Holofoil',reverseHolofoil:'Reverse Holo',firstEditionHolofoil:'1ª ed. Holo',firstEditionNormal:'1ª ed. Normale'};
+window.stimaPoke=function(i,src){
+  const c=RISPOKE[i];if(!c)return;
+  const box=document.getElementById('pcond');if(!box)return;
+  const tp=c.tcgplayer&&c.tcgplayer.prices,cm=c.cardmarket&&c.cardmarket.prices;
+  if(src.indexOf('tcg:')===0){
+    const k=src.slice(4),p=tp&&tp[k];
+    box.innerHTML=tabellaCond(p&&p.market,'$',"TCGplayer market · "+(PVAR[k]||k),c.tcgplayer&&c.tcgplayer.updatedAt);
+  }else if(src==='cm:regular'){
+    box.innerHTML=tabellaCond(cm&&(cm.trendPrice||cm.averageSellPrice),'€','Cardmarket trend/average · non-foil',c.cardmarket&&c.cardmarket.updatedAt);
+  }else{
+    box.innerHTML=tabellaCond(cm&&(cm.reverseHoloTrend||cm.reverseHoloSell),'€','Cardmarket trend/average · reverse holo',c.cardmarket&&c.cardmarket.updatedAt);
+  }
 }
 function mostraPoke(i){
   const c=RISPOKE[i];if(!c)return;
   const tp=c.tcgplayer&&c.tcgplayer.prices,cm=c.cardmarket&&c.cardmarket.prices;
-  let base=null,fonte='TCGplayer',agg=c.tcgplayer&&c.tcgplayer.updatedAt;
-  if(tp){const v=Object.values(tp).find(x=>x&&x.market!=null);if(v)base=v.market}
-  if(base==null&&cm){base=cm.trendPrice||cm.averageSellPrice||null;fonte='Cardmarket';agg=c.cardmarket&&c.cardmarket.updatedAt}
+  let tpt='';
+  if(tp&&Object.keys(tp).length){
+    const rows=Object.keys(tp).map(k=>{
+      const p=tp[k]||{},mk=num(p.market);
+      return '<tr><td><b>'+esc(PVAR[k]||k)+'</b></td><td>'+soldi(p.low,'$')+'</td><td>'+soldi(p.mid,'$')+'</td><td><b>'+soldi(p.market,'$')+'</b></td><td>'+soldi(p.high,'$')+'</td><td>'+(mk?'<button class="mini sec" onclick="stimaPoke('+i+',\'tcg:'+k+'\')">Usa per stima</button>':'')+'</td></tr>';
+    }).join('');
+    tpt='<div class="pbox"><b>TCGplayer · USD · dati API</b><div class="prog">Aggiornato: '+esc(c.tcgplayer.updatedAt||'data non indicata')+'</div><table class="ptable"><tr><th>Variante</th><th>Low</th><th>Mid</th><th>Market</th><th>High</th><th></th></tr>'+rows+'</table></div>';
+  }
+  let cmt='';
+  if(cm){
+    const regular=num(cm.trendPrice)||num(cm.averageSellPrice),rev=num(cm.reverseHoloTrend)||num(cm.reverseHoloSell);
+    cmt='<div class="pbox"><b>Cardmarket · EUR · dati API</b><div class="prog">Aggiornato: '+esc(c.cardmarket.updatedAt||'data non indicata')+'</div>'+
+      '<table class="ptable"><tr><th>Tipo</th><th>Low</th><th>EX+</th><th>Media vendite</th><th>Trend</th><th>1g</th><th>7g</th><th>30g</th><th></th></tr>'+
+      '<tr><td><b>Non-foil</b></td><td>'+soldi(cm.lowPrice,'€')+'</td><td>'+soldi(cm.lowPriceExPlus,'€')+'</td><td>'+soldi(cm.averageSellPrice,'€')+'</td><td><b>'+soldi(cm.trendPrice,'€')+'</b></td><td>'+soldi(cm.avg1,'€')+'</td><td>'+soldi(cm.avg7,'€')+'</td><td>'+soldi(cm.avg30,'€')+'</td><td>'+(regular?'<button class="mini sec" onclick="stimaPoke('+i+',\'cm:regular\')">Usa per stima</button>':'')+'</td></tr>'+
+      '<tr><td><b>Reverse Holo</b></td><td>'+soldi(cm.reverseHoloLow,'€')+'</td><td>—</td><td>'+soldi(cm.reverseHoloSell,'€')+'</td><td><b>'+soldi(cm.reverseHoloTrend,'€')+'</b></td><td>'+soldi(cm.reverseHoloAvg1,'€')+'</td><td>'+soldi(cm.reverseHoloAvg7,'€')+'</td><td>'+soldi(cm.reverseHoloAvg30,'€')+'</td><td>'+(rev?'<button class="mini sec" onclick="stimaPoke('+i+',\'cm:reverse\')">Usa per stima</button>':'')+'</td></tr></table></div>';
+  }
+  let def='';
+  if(cm&&(num(cm.trendPrice)||num(cm.averageSellPrice)))def=tabellaCond(num(cm.trendPrice)||num(cm.averageSellPrice),'€','Cardmarket trend/average · non-foil',c.cardmarket&&c.cardmarket.updatedAt);
+  else if(tp){const k=Object.keys(tp).find(k=>num(tp[k]&&tp[k].market));if(k)def=tabellaCond(tp[k].market,'$',"TCGplayer market · "+(PVAR[k]||k),c.tcgplayer&&c.tcgplayer.updatedAt)}
+  const query=[c.name,c.set&&c.set.name,c.number].filter(Boolean).join(' ');
   $('pcarta').classList.remove('hide');
-  $('pcarta').innerHTML=`<div class="msg"><b>${esc(c.name)}</b> — ${esc(c.set.name)} (${esc(c.number)})<br>
-   <img src="${c.images.small}" style="max-width:140px;border-radius:6px;margin-top:6px">
-   ${tabellaCond(base,'$',fonte,agg)}</div>`;
+  $('pcarta').innerHTML='<div class="msg"><b>'+esc(c.name)+'</b> — '+esc(c.set&&c.set.name||'')+' ('+esc(c.number)+')<br>'+
+   '<img src="'+esc(c.images.small)+'" style="max-width:160px;border-radius:7px;margin-top:7px">'+
+   '<div class="pactions"><button id="padd" class="sec" onclick="aggiungiPoke('+i+')">＋ Aggiungi all\u2019album</button>'+
+   linkEsterno(c.cardmarket&&c.cardmarket.url,'Apri Cardmarket')+linkEsterno(c.tcgplayer&&c.tcgplayer.url,'Apri TCGplayer')+
+   linkEsterno(ebaySold(query),'Vendite concluse eBay')+'</div>'+
+   '<div class="prog" style="margin-top:7px">I collegamenti esterni servono per verificare inserzioni/vendite direttamente sulla fonte; l\u2019app non inventa quei dati.</div>'+
+   tpt+cmt+'<div id="pcond">'+def+'</div></div>';
   $('pcarta').scrollIntoView({behavior:'smooth',block:'start'});
+}
+window.stimaYgo=function(i,j){
+  const c=RISYGO[i],s=c&&c.card_sets&&c.card_sets[j],box=document.getElementById('ycond');if(!s||!box)return;
+  box.innerHTML=tabellaCond(s.set_price,'$','YGOPRODeck set_price · '+s.set_code,'data non indicata dall\u2019API');
 }
 function mostraYgo(i){
   const c=RISYGO[i];if(!c)return;
-  const p=c.card_prices&&c.card_prices[0];
-  let base=null;
-  if(p){const vs=[p.tcgplayer_price,p.cardmarket_price,p.ebay_price].map(Number).filter(v=>v>0);if(vs.length)base=vs[0]}
+  const sets=c.card_sets||[],p=c.card_prices&&c.card_prices[0]||{};
+  const srows=sets.length?sets.map((s,j)=>'<tr><td>'+esc(s.set_name)+'</td><td><b>'+esc(s.set_code)+'</b></td><td>'+esc(s.set_rarity||'')+'</td><td><b>'+soldi(s.set_price,'$')+'</b></td><td><button class="mini sec" onclick="stimaYgo('+i+','+j+')">Usa per stima</button> <button id="yadd'+j+'" class="mini sec" onclick="aggiungiYgo('+i+','+j+')">＋ Album</button></td></tr>').join(''):'<tr><td colspan="5">Nessuna stampa/set disponibile.</td></tr>';
+  const vendors=[
+    ['Cardmarket','€',p.cardmarket_price],['TCGplayer','$',p.tcgplayer_price],['eBay','$',p.ebay_price],['Amazon','$',p.amazon_price],['CoolStuffInc','$',p.coolstuffinc_price]
+  ].filter(x=>num(x[2])).map(x=>'<tr><td>'+x[0]+'</td><td><b>'+soldi(x[2],x[1])+'</b></td></tr>').join('');
+  const query=c.name;
   $('pcarta').classList.remove('hide');
-  $('pcarta').innerHTML=`<div class="msg"><b>${esc(c.name)}</b> — ${esc(c.type)}<br>
-   <img src="${c.card_images[0].image_url_small}" style="max-width:140px;border-radius:6px;margin-top:6px">
-   ${tabellaCond(base,'$','TCGplayer/Cardmarket (via YGOPRODeck)','data non indicata dall\u2019API')}</div>`;
+  $('pcarta').innerHTML='<div class="msg"><b>'+esc(c.name)+'</b> — '+esc(c.type)+'<br>'+
+   '<img src="'+esc(c.card_images[0].image_url_small)+'" style="max-width:160px;border-radius:7px;margin-top:7px">'+
+   '<div class="pactions">'+linkEsterno(ebaySold(query),'Vendite concluse eBay')+linkEsterno(cardmarketYgo(query),'Cerca su Cardmarket')+'</div>'+
+   '<div class="pbox"><b>Stampe / espansioni · prezzo specifico YGOPRODeck</b><table class="ptable"><tr><th>Set</th><th>Codice</th><th>Rarità</th><th>Prezzo set</th><th></th></tr>'+srows+'</table></div>'+
+   (vendors?'<div class="pbox"><b>Prezzi venditore generici</b><div class="prog">YGOPRODeck li definisce come il prezzo più basso trovato fra più versioni della carta: non identificano necessariamente la stampa selezionata.</div><table class="ptable"><tr><th>Fonte</th><th>Prezzo</th></tr>'+vendors+'</table></div>':'')+
+   '<div id="ycond"></div></div>';
   $('pcarta').scrollIntoView({behavior:'smooth',block:'start'});
 }
 $('fileC').onchange=e=>{const f=e.target.files[0];if(f)apriCent(URL.createObjectURL(f));e.target.value=''};
