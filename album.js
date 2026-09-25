@@ -105,7 +105,7 @@ async function loadPokeCards(set){
     var j=await json('https://api.pokemontcg.io/v2/cards?q=set.id:'+encodeURIComponent(set.id)+'&orderBy=number&pageSize=250&page='+page);
     total=j.totalCount||0;all=all.concat(j.data||[]);page++;
   }
-  return all.map(function(c){return {key:'poke:'+c.id,game:'poke,id',id:c.id,name:c.name,number:c.number||'',rarity:c.rarity||'',image:c.images&&c.images.small||'',setName:set.name,setCode:set.id,price:null,currency:''}}).sort(numSort);
+  return all.map(function(c){return {key:'poke:'+c.id,game:'poke',id:c.id,name:c.name,number:c.number||'',rarity:c.rarity||'',image:c.images&&c.images.small||'',setName:set.name,setCode:set.id,price:null,currency:''}}).sort(numSort);
 }
 async function loadYgoCards(set){
   var all=[],url='https://db.ygoprodeck.com/api/v7/cardinfo.php?cardset='+encodeURIComponent(set.name)+'&num=100&offset=0',guard=0;
@@ -153,8 +153,8 @@ function render(){
       (c.image?'<img loading="lazy" src="'+esc(c.image)+'" alt="'+esc(c.name)+'">':'<div style="aspect-ratio:63/88;background:#0001;border-radius:8px"></div>')+
       '<div class="name">'+esc(c.name)+'</div>'+
       '<div class="meta">'+esc(c.number)+(c.rarity?' · '+esc(c.rarity):'')+'</div>'+price+
-      '<button class="'+(own?'sec':'')+'" onclick="albumToggle('+JSON.stringify(c.key).replace(/"/g,'&quot;')+')">'+(own?'Rimuovi dalla collezione':'Segna come posseduta')+'</button>'+
-      (own?'<div class="qty"><button class="sec" onclick="albumQty('+JSON.stringify(c.key).replace(/"/g,'&quot;')+',-1)">−</button><b>'+qty+'</b><button class="sec" onclick="albumQty('+JSON.stringify(c.key).replace(/"/g,'&quot;')+',1)">＋</button></div>':'')+
+      '<button class="'+(own?'sec ':'')+'own-toggle" data-key="'+esc(c.key)+'">'+(own?'Rimuovi dalla collezione':'Segna come posseduta')+'</button>'+
+      (own?'<div class="qty"><button class="sec qty-btn" data-key="'+esc(c.key)+'" data-d="-1">−</button><b>'+qty+'</b><button class="sec qty-btn" data-key="'+esc(c.key)+'" data-d="1">＋</button></div>':'')+
       '</article>';
   }).join(''):'<div class="empty">Nessuna carta corrisponde ai filtri.</div>';
   progress();
@@ -188,6 +188,12 @@ document.querySelectorAll('[data-filter]').forEach(function(b){b.addEventListene
   document.querySelectorAll('[data-filter]').forEach(function(x){x.classList.remove('active')});
   this.classList.add('active');S.filter=this.dataset.filter;render();
 })});
+$('cards').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  var k=b.dataset.key;if(!k)return;
+  if(b.classList.contains('own-toggle'))window.albumToggle(k);
+  else if(b.classList.contains('qty-btn'))window.albumQty(k,Number(b.dataset.d)||0);
+});
 $('exportBtn').onclick=exportCollection;
 $('importBtn').onclick=function(){$('importFile').click()};
 $('importFile').onchange=function(){if(this.files&&this.files[0])importCollection(this.files[0]);this.value=''};
