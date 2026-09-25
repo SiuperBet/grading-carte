@@ -4,7 +4,7 @@
 const state={
   source:null,sourceUrl:null,sourceKind:'front',game:'poke',points:[null,null,null,null],selected:0,
   rectified:null,rectifiedUrl:null,lines:{l:null,r:null,t:null,b:null},lineSel:'l',
-  prevView:null,editingVersion:0,fingerprint:null,autoBusy:false,lensMode:'context',lensHideTimer:null,lastPointer:null
+  prevView:null,editingVersion:0,fingerprint:null,autoBusy:false,lensMode:'context',lensHideTimer:null,lastPointer:null,measurement:null
 };
 
 function el(id){return document.getElementById(id)}
@@ -137,7 +137,7 @@ async function open(url,opts){
   if(!url){alert('Prima carica o scatta una foto della carta.');return}
   state.prevView=visibleView();state.sourceUrl=url;state.sourceKind=opts&&opts.kind||'front';
   hideViews();el('cent').classList.remove('hide');showOnly('A');
-  state.points=[null,null,null,null];state.selected=0;state.lensMode='context';state.rectified=null;state.rectifiedUrl=null;state.lines={l:null,r:null,t:null,b:null};
+  state.points=[null,null,null,null];state.selected=0;state.lensMode='context';state.rectified=null;state.rectifiedUrl=null;state.lines={l:null,r:null,t:null,b:null};state.measurement=null;
   state.game=(opts&&opts.game)||((el('rgame')&&el('rgame').value==='ygo')?'ygo':'poke');
   el('cc2game').value=state.game;
   setStatus('cc2Astatus','Carico la foto completa…');
@@ -781,8 +781,22 @@ function drawLensB(p){
 function hideLensB(){el('cc2lensB').style.display='none'}
 function updateResult(){
   const W=state.rectified.width,H=state.rectified.height,l=state.lines.l,r=W-state.lines.r,t=state.lines.t,b=H-state.lines.b;
-  const pct=(a,z)=>{const q=Math.round(a/(a+z)*100);return q+'/'+(100-q)};
-  el('cc2Result').innerHTML='Sinistra / Destra: <b>'+pct(l,r)+'</b><br>Alto / Basso: <b>'+pct(t,b)+'</b><br><span class="cc2help">Le linee blu sono modificabili: il risultato cambia subito mentre le sposti.</span>';
+  const pair=(a,z)=>{
+    const raw=a/(a+z)*100,q=Math.round(raw);
+    return {a:q,b:100-q,raw:raw,text:q+'/'+(100-q)};
+  };
+  const lr=pair(l,r),tb=pair(t,b);
+  state.measurement={
+    kind:state.sourceKind||'front',game:state.game,
+    left:lr.a,right:lr.b,top:tb.a,bottom:tb.b,
+    leftRaw:lr.raw,topRaw:tb.raw,
+    fingerprint:state.fingerprint,ts:Date.now()
+  };
+  el('cc2Result').innerHTML='Sinistra / Destra: <b>'+lr.text+'</b><br>Alto / Basso: <b>'+tb.text+'</b><br><span class="cc2help">Le linee blu sono modificabili: il risultato cambia subito mentre le sposti.</span>';
+  try{
+    localStorage.setItem('cardlab.grading.center.'+(state.sourceKind||'front'),JSON.stringify(state.measurement));
+  }catch(e){}
+  window.dispatchEvent(new CustomEvent('cardcenter:measurement',{detail:state.measurement}));
   saveState();
 }
 function bindB(){
@@ -853,7 +867,11 @@ function bind(){
 }
 
 window.CardCenterV2={open:open,close:close,getState:()=>state};
-window.apriCent=function(url){open(url,{game:(el('rgame')&&el('rgame').value==='ygo')?'ygo':'poke'})};
+window.apriCent=function(url){
+  var kind='front';
+  try{if(typeof foto!=='undefined'&&foto[1]&&url===foto[1])kind='back'}catch(e){}
+  open(url,{game:(el('rgame')&&el('rgame').value==='ygo')?'ygo':'poke',kind:kind});
+};
 window.esciCent=close;
 
 install();
