@@ -45,6 +45,17 @@ async function clearPhotos(){
     });
   }catch(e){}
 }
+async function deletePhoto(id){
+  try{
+    var db=await openDB();
+    await new Promise(function(resolve,reject){
+      var tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).delete(id);
+      tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)};
+    });
+    saving[id]=null;
+  }catch(e){}
+}
 function loadImage(url){
   return new Promise(function(resolve,reject){
     var im=new Image();im.onload=function(){resolve(im)};im.onerror=reject;im.src=url;
@@ -110,7 +121,7 @@ async function resetSession(){
   location.reload();
 }
 window.resetGradingSession=resetSession;
-window.GradingPersist={savePhoto:putPhoto,saveMeta:saveMeta};
+window.GradingPersist={savePhoto:putPhoto,deletePhoto:deletePhoto,saveMeta:saveMeta};
 
 var last=[];
 setInterval(function(){
