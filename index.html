@@ -30,8 +30,10 @@ video{width:100%;height:100%;object-fit:cover}
 .pan input[type=range]{width:100%}
 .ris{font-size:1.1rem;font-weight:600}
 .wrap{position:relative;margin-top:8px}
-.tt{touch-action:none;width:100%;display:block;border-radius:8px}
-.lp{position:absolute;width:120px;height:120px;border:3px solid #0f0;border-radius:50%;display:none;pointer-events:none;background:#000}
+.tt{touch-action:none;width:100%;aspect-ratio:3/4;display:block;border-radius:8px;background:#111}
+.lp{position:absolute;width:190px;height:190px;border:3px solid #0f0;border-radius:50%;display:none;pointer-events:none;background:#000;z-index:5}
+.vb{display:flex;gap:6px;margin-top:6px}
+.vb button{flex:1;width:auto;margin:0;padding:10px 4px;font-size:.85rem}
 .chb{width:auto;display:inline-block;padding:6px 10px;font-size:.8rem;margin:3px 3px 0 0}
 .cur{outline:2px solid var(--acc)}
 .hide{display:none}
@@ -66,29 +68,61 @@ video{width:100%;height:100%;object-fit:cover}
   <div class="grid" id="grid"></div>
   <button onclick="apriCent(foto[0])">Misura centratura del fronte</button>
   <button class="sec" onclick="apriCent(foto[1])">Misura centratura del retro</button>
+  <button class="sec" onclick="apriPrezzo()">Cerca prezzo carta (non gradata)</button>
   <div class="msg">Angoli, bordi e superficie arrivano nelle prossime fasi.</div>
+</div>
+
+<div id="prezzo" class="hide">
+  <h2 style="margin:4px 0">Prezzo (carta non gradata)</h2>
+  <div class="msg">Cerca il nome della carta. I prezzi vengono da API pubbliche gratuite (Pokémon TCG API / YGOPRODeck), in tempo reale.<br><br>
+  <b>Attenzione:</b> è il prezzo di mercato riportato dall'API, riferito a una carta in condizioni generalmente buone (vicino a Near Mint). Le altre condizioni sono <b>stime indicative</b>, calcolate applicando intervalli usati nel settore (non prezzi osservati davvero su quella carta). Stima, non un valore garantito.</div>
+  <div style="display:flex;gap:6px">
+    <input id="pq" placeholder="es. Charizard, Dark Magician" style="flex:1;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884">
+    <select id="pgioco" style="font:inherit;padding:6px"><option value="poke">Pokémon</option><option value="ygo">Yu-Gi-Oh</option></select>
+  </div>
+  <button onclick="cercaPrezzo()">Cerca</button>
+  <div id="pstato" class="msg hide"></div>
+  <div id="prisultati"></div>
+  <div id="pcarta" class="hide"></div>
+  <button class="sec" onclick="esciPrezzo()">Indietro</button>
 </div>
 
 <div id="cent" class="hide">
   <h2 style="margin:4px 0">Centratura</h2>
 
   <div id="stA">
-    <div class="msg"><b>Passo 1 · Raddrizza la carta.</b> Tocca e trascina sull'angolo indicato: appare una lente che ingrandisce il punto. Rilascia per confermare. Punta dove i due bordi dritti si incontrerebbero, anche se l'angolo è arrotondato. Per scorrere la pagina, tocca fuori dalla foto.</div>
+    <div class="msg"><b>Passo 1 · Raddrizza la carta.</b> Tocca e trascina sull'angolo indicato: la lente grande ti mostra il punto preciso. Rilascia per confermare, poi passa al successivo.<br><br>
+    <b>Per muoverti nella foto:</b> con <b>due dita</b> ingrandisci (pizzica) e sposti la vista, in qualsiasi momento, anche con un punto già selezionato. Oppure usa i tasti ＋ − e ✋ qui sotto.<br><br>
+    Punta dove i due bordi dritti si incontrerebbero, anche se l'angolo è arrotondato. Per scorrere la pagina, tocca fuori dalla foto.</div>
     <label style="display:block;margin-top:8px">Tipo di carta
       <select id="gioco" style="font:inherit;padding:6px"><option value="63,88">Pokémon (63×88 mm)</option><option value="59,86">Yu-Gi-Oh (59×86 mm)</option></select>
     </label>
     <div id="chA"></div>
     <p id="hA" class="prog"></p>
-    <div class="wrap"><canvas id="ca" class="tt"></canvas><canvas id="lpa" class="lp" width="240" height="240"></canvas></div>
+    <div class="wrap"><canvas id="ca" class="tt" width="900" height="1200"></canvas><canvas id="lpa" class="lp" width="380" height="380"></canvas></div>
+    <div class="vb">
+      <button class="sec" onclick="zoomV(VA,1.6)">＋</button>
+      <button class="sec" onclick="zoomV(VA,1/1.6)">−</button>
+      <button class="sec" onclick="resetV(VA)">Vista intera</button>
+      <button class="sec" id="mdA" onclick="modo(VA,'mdA')">☝ Muovo il punto</button>
+    </div>
     <button id="btnR" onclick="raddrizza()">Raddrizza</button>
     <button class="sec" onclick="RC=WK;LN={};TB=0;vaiB()">Uso la foto così com'è (già dritta e ritagliata)</button>
   </div>
 
   <div id="stB" class="hide">
-    <div class="msg"><b>Passo 2 · Segna i bordi</b>, uno alla volta. Tocca e trascina: la linea segue il dito e la lente ingrandisce. Rilascia per confermare. <b style="color:#d33">Rosso</b> = bordo della carta. <b style="color:#38f">Blu</b> = dove finisce il bordo stampato (es. il giallo dei Pokémon) e inizia il disegno. Puoi toccare un nome nell'elenco per rifare quella linea.</div>
+    <div class="msg"><b>Passo 2 · Segna i bordi</b>, uno alla volta. La vista si ingrandisce da sola sul lato giusto. Tocca e trascina: la linea segue il dito e la lente ingrandisce. Rilascia per confermare.<br>
+    <b style="color:#d33">Rosso</b> = bordo della carta. <b style="color:#38f">Blu</b> = dove finisce il bordo stampato (es. il giallo dei Pokémon) e inizia il disegno.<br><br>
+    Due dita = ingrandisci e sposta la vista, anche a punto selezionato. Toccando un nome nell'elenco rifai quella linea.</div>
     <div id="chB"></div>
     <p id="hB" class="prog"></p>
-    <div class="wrap"><canvas id="cb" class="tt"></canvas><canvas id="lpb" class="lp" width="240" height="240"></canvas></div>
+    <div class="wrap"><canvas id="cb" class="tt" width="900" height="1200"></canvas><canvas id="lpb" class="lp" width="380" height="380"></canvas></div>
+    <div class="vb">
+      <button class="sec" onclick="zoomV(VB,1.6)">＋</button>
+      <button class="sec" onclick="zoomV(VB,1/1.6)">−</button>
+      <button class="sec" onclick="resetV(VB)">Vista intera</button>
+      <button class="sec" id="mdB" onclick="modo(VB,'mdB')">☝ Muovo il punto</button>
+    </div>
     <div class="msg">Ritocco fine della linea selezionata (1 punto per volta):
       <canvas id="zb" style="width:100%;border-radius:6px;margin-top:6px"></canvas>
       <div style="display:flex;gap:8px"><button class="sec" id="nl" onclick="nudge(-1)">◀</button><button class="sec" id="nr" onclick="nudge(1)">▶</button></div>
@@ -184,7 +218,7 @@ async function rifai(k){
   i=k;riprendi=k;$('fine').classList.add('hide');$('cap').classList.remove('hide');mostraStep();
   try{await apriCamera()}catch(e){$('msg').textContent='Fotocamera non disponibile ('+e.name+').';$('msg').classList.remove('hide')}
 }
-// ---- FASE 4 (v2): raddrizzamento + centratura con tocco e lente ----
+// ---- FASE 4 (v3): visore con zoom, spostamento e lente grande ----
 const PX=12; // punti per mm nella carta raddrizzata
 let WK=null,PTS=[null,null,null,null],TG=0,RC=null,LN={},TB=0,DIM={w:63,h:88};
 const CORN=['alto sinistra','alto destra','basso destra','basso sinistra'];
@@ -198,27 +232,77 @@ const TARGETS=[
  {k:'yi2',n:'Basso: fine bordo stampato',ax:'y',c:'#38f'},
  {k:'yo2',n:'Basso: bordo carta',ax:'y',c:'#e33'}
 ];
+const DEF={xo1:.06,xi1:.11,xi2:.89,xo2:.94,yo1:.045,yi1:.08,yi2:.92,yo2:.955};
 
-function loupe(id,cv,src,sx,sy,ax,cx,cy){
-  const L=$(id),c=L.getContext('2d'),S=.06*Math.max(src.width,src.height);
-  c.clearRect(0,0,240,240);c.drawImage(src,sx-S/2,sy-S/2,S,S,0,0,240,240);
-  c.strokeStyle='#0f0';c.lineWidth=2;c.beginPath();
-  if(ax!=='y'){c.moveTo(120,0);c.lineTo(120,240)}
-  if(ax!=='x'){c.moveTo(0,120);c.lineTo(240,120)}
+// ---------- visore generico ----------
+const mkV=(cv,lp)=>({cv:$(cv),lp,mode:'punto',src:null,z0:1,k:1,cx:0,cy:0,over:null,place:null,end:null,axis:()=>'xy'});
+const VA=mkV('ca','lpa'),VB=mkV('cb','lpb');
+const zV=V=>V.z0*V.k;
+function setSrc(V,src){
+  V.src=src;V.z0=Math.min(V.cv.width/src.width,V.cv.height/src.height);V.k=1;V.cx=src.width/2;V.cy=src.height/2;
+}
+function clampV(V){V.cx=Math.min(Math.max(V.cx,0),V.src.width);V.cy=Math.min(Math.max(V.cy,0),V.src.height)}
+function vRender(V){
+  const cv=V.cv,c=cv.getContext('2d'),z=zV(V),f=cv.getBoundingClientRect().width/cv.width||1;
+  c.setTransform(1,0,0,1,0,0);c.fillStyle='#111';c.fillRect(0,0,cv.width,cv.height);
+  c.setTransform(z,0,0,z,cv.width/2-V.cx*z,cv.height/2-V.cy*z);
+  c.drawImage(V.src,0,0);
+  if(V.over)V.over(c,1/(z*f));
+  c.setTransform(1,0,0,1,0,0);
+}
+function zoomV(V,fac){V.k=Math.min(16,Math.max(1,V.k*fac));vRender(V)}
+function resetV(V){V.k=1;V.cx=V.src.width/2;V.cy=V.src.height/2;vRender(V)}
+function focusV(V,x,y,k){V.k=k;V.cx=x;V.cy=y;clampV(V)}
+function modo(V,id){V.mode=V.mode==='punto'?'vista':'punto';$(id).textContent=V.mode==='punto'?'☝ Muovo il punto':'✋ Sposto la vista'}
+function hideLoupe(V){$(V.lp).style.display='none'}
+function loupeV(V,s,p){
+  const L=$(V.lp),c=L.getContext('2d'),r=V.cv.getBoundingClientRect(),f=r.width/V.cv.width;
+  const size=190,S=Math.max(8,size/(zV(V)*f*3));
+  c.fillStyle='#000';c.fillRect(0,0,380,380);
+  c.drawImage(V.src,s.x-S/2,s.y-S/2,S,S,0,0,380,380);
+  const ax=V.axis();c.strokeStyle='#0f0';c.lineWidth=2;c.beginPath();
+  if(ax!=='y'){c.moveTo(190,0);c.lineTo(190,380)}
+  if(ax!=='x'){c.moveTo(0,190);c.lineTo(380,190)}
   c.stroke();
-  const rw=cv.getBoundingClientRect().width;
-  const left=Math.min(Math.max(cx-60,0),rw-120);let top=cy-190;if(top<0)top=cy+60;
+  const left=Math.min(Math.max(p.cx-size/2,0),r.width-size);let top=p.cy-size-60;if(top<0)top=p.cy+70;
   L.style.left=left+'px';L.style.top=top+'px';L.style.display='block';
 }
-function tocco(cv,lp,fn,fine){
-  let on=false;
-  const P=e=>{const r=cv.getBoundingClientRect();return{cx:e.clientX-r.left,cy:e.clientY-r.top,x:(e.clientX-r.left)/r.width*cv.width,y:(e.clientY-r.top)/r.height*cv.height}};
-  cv.onpointerdown=e=>{on=true;cv.setPointerCapture(e.pointerId);fn(P(e))};
-  cv.onpointermove=e=>{if(on)fn(P(e))};
-  const end=()=>{if(!on)return;on=false;$(lp).style.display='none';fine()};
-  cv.onpointerup=end;cv.onpointercancel=end;
+function attacca(V){
+  const cv=V.cv,P=new Map();let g=null,placing=false;
+  const ip=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*cv.width/r.width,y:(e.clientY-r.top)*cv.height/r.height,cx:e.clientX-r.left,cy:e.clientY-r.top}};
+  const S=p=>{const z=zV(V);return{x:V.cx+(p.x-cv.width/2)/z,y:V.cy+(p.y-cv.height/2)/z}};
+  const piazza=p=>{const s=S(p);V.place(s);vRender(V);loupeV(V,s,p)};
+  cv.onpointerdown=e=>{
+    cv.setPointerCapture(e.pointerId);P.set(e.pointerId,ip(e));
+    if(P.size===2){
+      placing=false;hideLoupe(V);
+      const[a,b]=[...P.values()],m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      g={d0:Math.hypot(a.x-b.x,a.y-b.y)||1,k0:V.k,s0:S(m)};
+    }else if(P.size===1){
+      const p=P.get(e.pointerId);
+      if(V.mode==='punto'){placing=true;piazza(p)}else g={pan:true,last:p};
+    }
+  };
+  cv.onpointermove=e=>{
+    if(!P.has(e.pointerId))return;const p=ip(e);P.set(e.pointerId,p);
+    if(P.size>=2&&g&&g.d0){
+      const[a,b]=[...P.values()],m={x:(a.x+b.x)/2,y:(a.y+b.y)/2},d=Math.hypot(a.x-b.x,a.y-b.y);
+      V.k=Math.min(16,Math.max(1,g.k0*d/g.d0));const z=zV(V);
+      V.cx=g.s0.x-(m.x-cv.width/2)/z;V.cy=g.s0.y-(m.y-cv.height/2)/z;clampV(V);vRender(V);
+    }else if(P.size===1){
+      if(g&&g.pan){const z=zV(V);V.cx-=(p.x-g.last.x)/z;V.cy-=(p.y-g.last.y)/z;g.last=p;clampV(V);vRender(V)}
+      else if(placing)piazza(p);
+    }
+  };
+  const up=e=>{
+    if(!P.has(e.pointerId))return;P.delete(e.pointerId);
+    if(placing&&P.size===0){placing=false;hideLoupe(V);if(V.end)V.end()}
+    if(P.size===0)g=null;
+  };
+  cv.onpointerup=up;cv.onpointercancel=up;
 }
 
+// ---------- apertura / uscita ----------
 function apriCent(url){
   if(!url){alert('Questa foto non c\u2019è ancora.');return}
   const im=new Image();
@@ -238,31 +322,29 @@ function esciCent(){
 }
 
 // ---------- Passo 1: angoli ----------
-function vaiA(){
-  $('stA').classList.remove('hide');$('stB').classList.add('hide');
-  const ca=$('ca');ca.width=Math.min(WK.width,1000);ca.height=Math.round(ca.width*WK.height/WK.width);
-  tocco(ca,'lpa',p=>{
-    const d=WK.width/ca.width;PTS[TG]={x:p.x*d,y:p.y*d};dA();
-    loupe('lpa',ca,WK,PTS[TG].x,PTS[TG].y,'xy',p.cx,p.cy);
-  },()=>{const n=PTS.findIndex(q=>!q);if(n>=0)TG=n;dA()});
-  dA();
-}
-function dA(){
-  const ca=$('ca'),c=ca.getContext('2d'),d=ca.width/WK.width;
-  c.drawImage(WK,0,0,ca.width,ca.height);
-  const q=PTS.map(p=>p&&{x:p.x*d,y:p.y*d});
-  c.strokeStyle='#0f0';c.lineWidth=2;c.beginPath();
-  q.forEach((p,i)=>{if(!p)return;if(i>0&&q[i-1])c.lineTo(p.x,p.y);else c.moveTo(p.x,p.y)});
-  if(q.every(Boolean))c.closePath();
+VA.over=(c,u)=>{
+  c.lineWidth=2*u;c.strokeStyle='#0f0';c.beginPath();
+  PTS.forEach((p,i)=>{if(!p)return;if(i>0&&PTS[i-1])c.lineTo(p.x,p.y);else c.moveTo(p.x,p.y)});
+  if(PTS.every(Boolean))c.closePath();
   c.stroke();
-  q.forEach((p,i)=>{
+  PTS.forEach((p,i)=>{
     if(!p)return;
-    c.fillStyle=i===TG?'#ff0':'#0f0';c.beginPath();c.arc(p.x,p.y,6,0,7);c.fill();
-    c.font='bold 16px sans-serif';c.lineWidth=3;c.strokeStyle='#000';c.strokeText(i+1,p.x+9,p.y-9);c.fillStyle='#fff';c.fillText(i+1,p.x+9,p.y-9);
+    c.fillStyle=i===TG?'#ff0':'#0f0';c.beginPath();c.arc(p.x,p.y,6*u,0,7);c.fill();
+    c.font='bold '+(16*u)+'px sans-serif';c.lineWidth=3*u;c.strokeStyle='#000';c.strokeText(i+1,p.x+9*u,p.y-9*u);c.fillStyle='#fff';c.fillText(i+1,p.x+9*u,p.y-9*u);
   });
-  $('chA').innerHTML=CORN.map((n,i)=>`<button class="sec chb ${i===TG?'cur':''}" onclick="TG=${i};dA()">${PTS[i]?'✓ ':''}${i+1} ${n}</button>`).join('');
+};
+VA.place=s=>{PTS[TG]={x:s.x,y:s.y}};
+VA.end=()=>{const n=PTS.findIndex(q=>!q);if(n>=0)TG=n;dA()};
+function selA(i){TG=i;dA()}
+function dA(){
+  vRender(VA);
+  $('chA').innerHTML=CORN.map((n,i)=>`<button class="sec chb ${i===TG?'cur':''}" onclick="selA(${i})">${PTS[i]?'✓ ':''}${i+1} ${n}</button>`).join('');
   $('hA').textContent=PTS.every(Boolean)?'Controlla i 4 punti, poi tocca "Raddrizza". Puoi correggerne uno toccando il suo nome.':'Ora: angolo '+(TG+1)+' ('+CORN[TG]+').';
   $('btnR').disabled=!PTS.every(Boolean);
+}
+function vaiA(){
+  $('stA').classList.remove('hide');$('stB').classList.add('hide');
+  setSrc(VA,WK);dA();
 }
 function omografia(dst,src){
   const A=[],b=[];
@@ -308,23 +390,30 @@ function raddrizza(){
 }
 
 // ---------- Passo 2: bordi ----------
-function vaiB(){
-  $('stA').classList.add('hide');$('stB').classList.remove('hide');
-  const cb=$('cb');cb.width=RC.width;cb.height=RC.height;
-  tocco(cb,'lpb',p=>{
-    const t=TARGETS[TB];LN[t.k]=t.ax==='x'?p.x:p.y;dB();
-    loupe('lpb',cb,RC,p.x,p.y,t.ax,p.cx,p.cy);
-  },()=>{const n=TARGETS.findIndex(t=>LN[t.k]==null);if(n>=0)TB=n;dB()});
-  dB();
-}
-function dB(){
-  const cb=$('cb'),c=cb.getContext('2d');c.drawImage(RC,0,0);c.lineWidth=2;
+VB.over=(c,u)=>{
+  c.lineWidth=1.5*u;
   TARGETS.forEach((t,i)=>{
     if(LN[t.k]==null)return;c.strokeStyle=i===TB?'#ff0':t.c;c.beginPath();
-    if(t.ax==='x'){c.moveTo(LN[t.k],0);c.lineTo(LN[t.k],cb.height)}else{c.moveTo(0,LN[t.k]);c.lineTo(cb.width,LN[t.k])}
+    if(t.ax==='x'){c.moveTo(LN[t.k],0);c.lineTo(LN[t.k],RC.height)}else{c.moveTo(0,LN[t.k]);c.lineTo(RC.width,LN[t.k])}
     c.stroke();
   });
-  $('chB').innerHTML=TARGETS.map((t,i)=>`<button class="sec chb ${i===TB?'cur':''}" onclick="TB=${i};dB()">${LN[t.k]!=null?'✓ ':''}${t.n}</button>`).join('');
+};
+VB.axis=()=>TARGETS[TB].ax;
+VB.place=s=>{const t=TARGETS[TB];LN[t.k]=t.ax==='x'?s.x:s.y};
+VB.end=()=>{const n=TARGETS.findIndex(t=>LN[t.k]==null);if(n>=0){TB=n;focusB()}dB()};
+function focusB(){
+  const t=TARGETS[TB],W=RC.width,H=RC.height;let a=LN[t.k];
+  if(a==null)a=DEF[t.k]*(t.ax==='x'?W:H);
+  if(t.ax==='x')focusV(VB,a,H/2,4);else focusV(VB,W/2,a,4);
+}
+function selB(i){TB=i;focusB();dB()}
+function vaiB(){
+  $('stA').classList.add('hide');$('stB').classList.remove('hide');
+  setSrc(VB,RC);focusB();dB();
+}
+function dB(){
+  vRender(VB);
+  $('chB').innerHTML=TARGETS.map((t,i)=>`<button class="sec chb ${i===TB?'cur':''}" onclick="selB(${i})">${LN[t.k]!=null?'✓ ':''}${t.n}</button>`).join('');
   const t=TARGETS[TB];
   $('hB').textContent='Ora: '+t.n+'.';
   $('nl').textContent=t.ax==='x'?'◀':'▲';$('nr').textContent=t.ax==='x'?'▶':'▼';
@@ -355,6 +444,77 @@ function risultato(){
   $('ris').innerHTML=`<div class="ris">Sinistra/Destra: ${p(l,r)}<br>Alto/Basso: ${p(t,b)}</div>
    <p style="font-size:.85rem;margin:8px 0 0">Controllo raddrizzamento: larghezza/altezza della carta = ${asp.toFixed(3)} (attesa ${att.toFixed(3)}, scarto ${dev.toFixed(1)}%) ${dev<=1.5?'✓':'⚠ controlla i 4 angoli o il tipo di carta'}. La soglia dell\u20191,5% è provvisoria.</p>
    <p style="font-size:.85rem;margin:8px 0 0">Misura manuale: l\u2019errore dipende da come posizioni le linee. Lo misureremo in Fase 7 con carte di cui conosci i valori. Stima, non un grading ufficiale.</p>`;
+}
+attacca(VA);attacca(VB);
+
+// ---- Prezzi (carta non gradata) ----
+// Intervalli dichiarati (stime di settore, non vendite reali osservate), fonte: guide condizione
+// TCGplayer/community (LP 70-85%, MP 40-70%, HP e DMG: nessun intervallo concorde in fonti pubbliche -> stimati per difetto, dichiarati come tali)
+const COND=[
+ {k:'Near Mint (NM)',min:1,max:1,nota:'prezzo di mercato riportato dall\u2019API'},
+ {k:'Lightly Played (LP)',min:.70,max:.85,nota:'stima di settore'},
+ {k:'Moderately Played (MP)',min:.40,max:.70,nota:'stima di settore'},
+ {k:'Heavily Played (HP)',min:.15,max:.40,nota:'stima di settore, poca concordanza tra le fonti'},
+ {k:'Damaged / Poor',min:.05,max:.20,nota:'stima di settore, molto variabile carta per carta'}
+];
+function apriPrezzo(){
+  ['start','fine','cap','cent'].forEach(x=>$(x).classList.add('hide'));
+  $('prezzo').classList.remove('hide');$('pcarta').classList.add('hide');$('prisultati').innerHTML='';
+}
+function esciPrezzo(){$('prezzo').classList.add('hide');$('fine').classList.remove('hide')}
+async function cercaPrezzo(){
+  const q=$('pq').value.trim();if(!q){return}
+  const st=$('pstato');st.classList.remove('hide');st.textContent='Cerco...';
+  $('prisultati').innerHTML='';$('pcarta').classList.add('hide');
+  try{
+    if($('pgioco').value==='poke'){
+      const r=await fetch('https://api.pokemontcg.io/v2/cards?q=name:"'+encodeURIComponent(q)+'*"&pageSize=15');
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const j=await r.json();
+      if(!j.data||!j.data.length){st.textContent='Nessuna carta trovata con questo nome.';return}
+      st.classList.add('hide');
+      $('prisultati').innerHTML=j.data.map((c,i)=>`<button class="sec chb" style="display:block;width:100%;text-align:left;margin-top:4px" onclick='mostraPoke(${JSON.stringify(c).replace(/'/g,"&#39;")})'>${c.name} — ${c.set.name} (${c.number})</button>`).join('');
+    }else{
+      const r=await fetch('https://db.ygoprodeck.com/api/v7/cardinfo.php?fname='+encodeURIComponent(q));
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const j=await r.json();
+      if(!j.data||!j.data.length){st.textContent='Nessuna carta trovata con questo nome.';return}
+      st.classList.add('hide');
+      $('prisultati').innerHTML=j.data.slice(0,15).map((c,i)=>`<button class="sec chb" style="display:block;width:100%;text-align:left;margin-top:4px" onclick='mostraYgo(${JSON.stringify(c).replace(/'/g,"&#39;")})'>${c.name} (${c.type})</button>`).join('');
+    }
+  }catch(e){
+    st.textContent='Errore nel contattare il servizio prezzi ('+e.message+'). Riprova tra poco: potrebbe essere un limite temporaneo dell\u2019API gratuita, non un errore dell\u2019app.';
+  }
+}
+function tabellaCond(base,valuta,fonte,aggiornato){
+  if(base==null)return '<p>Questa versione della carta non ha un prezzo di mercato disponibile nell\u2019API. Prova un\u2019altra versione dall\u2019elenco.</p>';
+  const righe=COND.map(c=>{
+    const lo=(base*c.min).toFixed(2),hi=(base*c.max).toFixed(2);
+    const val=c.min===c.max?valuta+lo:valuta+lo+' – '+valuta+hi;
+    return `<tr><td>${c.k}</td><td>${val}</td><td style="font-size:.75rem;opacity:.75">${c.nota}</td></tr>`;
+  }).join('');
+  return `<table style="width:100%;border-collapse:collapse;margin-top:8px">
+   <tr style="text-align:left;font-size:.8rem;opacity:.7"><th>Condizione</th><th>Prezzo stimato</th><th></th></tr>${righe}</table>
+   <p style="font-size:.75rem;opacity:.75;margin-top:6px">Fonte prezzo Near Mint: ${fonte}, aggiornato ${aggiornato||'data non indicata dall\u2019API'}. Le altre righe sono stime, non vendite osservate.</p>`;
+}
+function mostraPoke(c){
+  const tp=c.tcgplayer&&c.tcgplayer.prices,cm=c.cardmarket&&c.cardmarket.prices;
+  let base=null,fonte='TCGplayer',agg=c.tcgplayer&&c.tcgplayer.updatedAt;
+  if(tp){const v=Object.values(tp).find(x=>x&&x.market!=null);if(v)base=v.market}
+  if(base==null&&cm){base=cm.trendPrice||cm.averageSellPrice||null;fonte='Cardmarket';agg=c.cardmarket&&c.cardmarket.updatedAt}
+  $('pcarta').classList.remove('hide');
+  $('pcarta').innerHTML=`<div class="msg"><b>${c.name}</b> — ${c.set.name} (${c.number})<br>
+   <img src="${c.images.small}" style="max-width:140px;border-radius:6px;margin-top:6px">
+   ${tabellaCond(base,'$',fonte,agg)}</div>`;
+}
+function mostraYgo(c){
+  const p=c.card_prices&&c.card_prices[0];
+  let base=null;
+  if(p){const vs=[p.tcgplayer_price,p.cardmarket_price,p.ebay_price].map(Number).filter(v=>v>0);if(vs.length)base=vs[0]}
+  $('pcarta').classList.remove('hide');
+  $('pcarta').innerHTML=`<div class="msg"><b>${c.name}</b> — ${c.type}<br>
+   <img src="${c.card_images[0].image_url_small}" style="max-width:140px;border-radius:6px;margin-top:6px">
+   ${tabellaCond(base,'$','TCGplayer/Cardmarket (via YGOPRODeck)','data non indicata dall\u2019API')}</div>`;
 }
 $('fileC').onchange=e=>{const f=e.target.files[0];if(f)apriCent(URL.createObjectURL(f));e.target.value=''};
 $('btnStart').onclick=avvia;$('btnShot').onclick=scatta;
