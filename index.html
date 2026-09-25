@@ -45,7 +45,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 .pr{display:flex;align-items:center;gap:10px;text-align:left;margin-top:4px}
 .pr img{width:36px;border-radius:4px;flex-shrink:0}
 .pr span{font-size:.9rem}
-.ptable{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}.ptable th,.ptable td{padding:6px 5px;border-bottom:1px solid #8883;text-align:left;vertical-align:top}.ptable th{font-size:.75rem;opacity:.72}.pbox{background:var(--card);padding:10px;border-radius:9px;margin-top:9px}.pactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pactions a,.pactions button{width:auto;margin:0;padding:8px 10px;font-size:.78rem}.plink{display:inline-block;background:var(--card);color:var(--fg);border-radius:8px;padding:7px 9px;text-decoration:none;border:1px solid #8883}.mini{width:auto;padding:5px 7px;margin:0;font-size:.72rem}.rprev{width:100%;max-height:440px;object-fit:contain;background:#111;border-radius:10px;margin-top:8px}.uploadGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.uploadBtn{display:flex;align-items:center;justify-content:center;text-align:center;font:inherit;padding:12px 16px;border-radius:10px;background:var(--soft);color:var(--fg);border:1px solid var(--line);min-height:52px;cursor:pointer}.uploadBtn:active{transform:scale(.99)}.photoActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.photoActions button{width:auto;flex:1;min-width:140px}.rmanual{display:flex;gap:6px;margin-top:8px}.rmanual input{flex:1;min-width:0;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884;background:var(--bg);color:var(--fg)}.hide{display:none}
+.ptable{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}.ptable th,.ptable td{padding:6px 5px;border-bottom:1px solid #8883;text-align:left;vertical-align:top}.ptable th{font-size:.75rem;opacity:.72}.pbox{background:var(--card);padding:10px;border-radius:9px;margin-top:9px}.pactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pactions a,.pactions button{width:auto;margin:0;padding:8px 10px;font-size:.78rem}.plink{display:inline-block;background:var(--card);color:var(--fg);border-radius:8px;padding:7px 9px;text-decoration:none;border:1px solid #8883}.mini{width:auto;padding:5px 7px;margin:0;font-size:.72rem}.rpreviewWrap{position:relative;width:100%;margin-top:8px;background:#090a0d;border-radius:12px;overflow:hidden}.rprev{display:block;width:100%;height:auto;max-height:560px;object-fit:contain;background:#090a0d;border-radius:10px;margin:0 auto}.rDetectOverlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.detectLegend{font-size:.8rem;margin-top:6px;opacity:.78}.uploadGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.uploadBtn{display:flex;align-items:center;justify-content:center;text-align:center;font:inherit;padding:12px 16px;border-radius:10px;background:var(--soft);color:var(--fg);border:1px solid var(--line);min-height:52px;cursor:pointer}.uploadBtn:active{transform:scale(.99)}.photoActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.photoActions button{width:auto;flex:1;min-width:140px}.rmanual{display:flex;gap:6px;margin-top:8px}.rmanual input{flex:1;min-width:0;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884;background:var(--bg);color:var(--fg)}.hide{display:none}
 #restoreMsg{border-left:4px solid var(--ok)}
 @media(max-width:700px){body{padding-inline:10px}.apphead{padding-top:12px}.featuregrid{grid-template-columns:1fr}.topactions{width:100%}.topactions button{flex:1}.vb{flex-wrap:wrap}.vb button{min-width:45%}.ptable{display:block;overflow-x:auto;white-space:nowrap}}
 </style>
@@ -54,7 +54,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 <header class="apphead">
   <div>
     <h1>📸 Card Lab</h1>
-    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione · <span style="opacity:.65">Build 2026.09.25.12</span></div>
+    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione · <span style="opacity:.65">Build 2026.09.25.13</span></div>
   </div>
   <div class="topactions">
     <button class="sec" onclick="location.href='album.html'">📚 Album</button>
@@ -127,7 +127,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 <div id="riconosci" class="hide">
   <h2 style="margin:4px 0">Riconosci carta da foto</h2>
   <div class="msg"><b>100% gratuito.</b> Il riconoscimento del testo viene eseguito nel browser con OCR open source. La foto non viene inviata a un servizio OCR. Dopo la lettura, solo nome/numero vengono usati per interrogare i cataloghi gratuiti già usati dall'app.<br><br>
-  Il risultato è una <b>proposta da verificare</b>: prima di aggiungere la carta controlla sempre immagine, espansione e numero.</div>
+  Il risultato è una <b>proposta da verificare</b>. Il rilevamento dei bordi è non distruttivo: la foto completa resta sempre disponibile e i 4 angoli possono essere corretti manualmente prima della centratura.</div>
   <label style="display:block;margin-top:8px">Gioco
     <select id="rgame" style="font:inherit;padding:8px;width:100%;margin-top:4px"><option value="poke">Pokémon</option><option value="ygo">Yu-Gi-Oh!</option></select>
   </label>
@@ -138,7 +138,11 @@ video{width:100%;height:100%;object-fit:contain;display:block}
   </div>
   <input id="rfileCamera" type="file" accept="image/*" capture="environment" class="hide" onchange="handleRecognizerInput(this,'camera')">
   <input id="rfileGallery" type="file" accept="image/*" class="hide" onchange="handleRecognizerInput(this,'gallery')">
-  <img id="rpreview" class="rprev" alt="Foto carta" style="display:none">
+  <div id="rpreviewWrap" class="rpreviewWrap" style="display:none">
+    <img id="rpreview" class="rprev" alt="Foto carta">
+    <canvas id="rDetectOverlay" class="rDetectOverlay"></canvas>
+  </div>
+  <div id="rDetectLegend" class="detectLegend hide">Linea verde = bordo carta rilevato. La foto originale non viene ritagliata.</div>
   <div id="rstatus" class="msg hide"></div>
   <div id="rphotoActions" class="photoActions hide">
     <button id="rRecognizeBtn" type="button" onclick="riconosciFotoImportata()" style="flex-basis:100%">✨ Riconosci e valuta</button>
@@ -399,25 +403,21 @@ function apriCent(url){
     ['start','fine','cap','prezzo','riconosci'].forEach(x=>$(x).classList.add('hide'));$('cent').classList.remove('hide');
 
     if(window.__galleryCenterOnce){
-      const cropped=!!window.__galleryCropFound;
-      window.__galleryCenterOnce=false;window.__galleryCropFound=false;
+      const detected=Array.isArray(window.__galleryDetectedCorners)&&window.__galleryDetectedCorners.length===4
+        ?window.__galleryDetectedCorners:null;
+      window.__galleryCenterOnce=false;window.__galleryCropFound=false;window.__galleryDetectedCorners=null;
       const [gw,gh]=$('gioco').value.split(',').map(Number);DIM={w:gw,h:gh};
 
-      // Da galleria non eseguiamo più rilevamenti pesanti né saltiamo direttamente ai bordi.
-      // Se il ritaglio rapido ha isolato la carta, preimpostiamo i 4 angoli ai bordi dell'immagine.
-      if(cropped){
-        const m=Math.max(2,Math.round(Math.min(WK.width,WK.height)*.006));
-        PTS=[
-          {x:m,y:m},
-          {x:WK.width-m,y:m},
-          {x:WK.width-m,y:WK.height-m},
-          {x:m,y:WK.height-m}
-        ];
-        TG=0;vaiA();dA();
-        $('hA').textContent='✓ Carta isolata. Ho preimpostato i 4 angoli: controllali e correggili se serve, poi premi “Raddrizza”.';
+      vaiA();
+      if(detected){
+        PTS=detected.map(p=>({
+          x:Math.max(0,Math.min(WK.width-1,p.x*WK.width)),
+          y:Math.max(0,Math.min(WK.height-1,p.y*WK.height))
+        }));
+        TG=0;dA();
+        $('hA').textContent='✓ I 4 bordi rilevati sono riportati sulla FOTO COMPLETA. Controlla ogni angolo: se serve trascinalo sul vero bordo esterno della carta, poi premi “Raddrizza”.';
       }else{
-        vaiA();
-        $('hA').textContent='Foto caricata. Posiziona i 4 angoli della carta e poi premi “Raddrizza”. Nessun calcolo pesante viene eseguito durante il trascinamento.';
+        $('hA').textContent='Foto completa: posiziona i 4 angoli sul bordo esterno reale della carta e poi premi “Raddrizza”. Nessuna parte dell’immagine è stata tagliata.';
       }
       return;
     }
@@ -873,8 +873,8 @@ $('file').onchange=e=>{
   im.src=URL.createObjectURL(f);e.target.value='';
 };
 </script>
-<script src="auto-camera.js?v=20260925-12"></script>
-<script src="recognizer.js?v=20260925-12"></script>
-<script src="grading-state.js?v=20260925-12"></script>
+<script src="auto-camera.js?v=20260925-13"></script>
+<script src="recognizer.js?v=20260925-13"></script>
+<script src="grading-state.js?v=20260925-13"></script>
 </body>
 </html>
