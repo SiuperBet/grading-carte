@@ -890,16 +890,21 @@ window.salvaFotoRiconoscimento=async function(){
 };
 window.eliminaFotoRiconoscimento=async function(){
   if(!recUrl)return;
-  if(recPhotoSaved&&!confirm('Eliminare questa foto salvata dalla sessione?'))return;
+  var wasSaved=recPhotoSaved;
+  if(wasSaved&&!confirm('Eliminare questa foto salvata dalla sessione?'))return;
   try{
-    if(typeof foto!=='undefined')foto[0]=null;
-    if(window.GradingPersist&&GradingPersist.deletePhoto)await GradingPersist.deletePhoto(0);
+    // Se la foto è solo temporanea, NON toccare un eventuale fronte già salvato in precedenza.
+    if(wasSaved){
+      if(typeof foto!=='undefined'&&foto[0]===recUrl)foto[0]=null;
+      if(window.GradingPersist&&GradingPersist.deletePhoto)await GradingPersist.deletePhoto(0);
+    }
   }catch(e){}
-  recUrl=null;recOcrUrl=null;recOriginalCanvas=null;recDetection=null;recCropFound=false;recResults=[];recPhotoSaved=false;
+  if(recAutoTimer){clearTimeout(recAutoTimer);recAutoTimer=null}
+  recUrl=null;recOcrUrl=null;recOriginalCanvas=null;recDetection=null;recCropFound=false;recResults=[];recPhotoSaved=false;recLastRecognizedUrl=null;
   rq('rpreview').removeAttribute('src');rq('rpreviewWrap').style.display='none';
   rq('rphotoActions').classList.add('hide');rq('rresults').innerHTML='';rq('rocr').value='';rq('rmanual').value='';
   updateRecognizerPhotoButtons();
-  setStatus('Foto eliminata. Scattane o scegline un’altra.');
+  setStatus(wasSaved?'Foto salvata eliminata dalla sessione.':'Foto temporanea eliminata. La precedente foto salvata, se presente, non è stata toccata.');
 };
 async function prepareImportedPhoto(file,source){
   if(!file)return;
