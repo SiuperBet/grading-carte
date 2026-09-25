@@ -242,12 +242,15 @@ window.esciRiconoscimento=function(){
 window.usaFronteOCR=function(){
   if(typeof foto!=='undefined'&&foto[0])recognize(foto[0]);
 }
-rq('rfile').addEventListener('change',function(){
+function handleRecognizerFile(){
   if(this.files&&this.files[0]){
     if(recUrl&&recUrl.indexOf('blob:')===0)URL.revokeObjectURL(recUrl);
     recognize(URL.createObjectURL(this.files[0]));
   }
   this.value='';
+}
+['rfileCamera','rfileGallery'].forEach(function(id){
+  var e=rq(id);if(e)e.addEventListener('change',handleRecognizerFile);
 });
 rq('rgame').addEventListener('change',function(){if(recUrl)recognize(recUrl)});
 rq('rresults').addEventListener('click',function(ev){
