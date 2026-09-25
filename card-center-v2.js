@@ -315,6 +315,183 @@ async function lightDetectCorners(source,game,onProgress){
   noise/=Math.max(1,bgSamples.length);
   var bgScale=Math.max(24,noise*2.6);
 
+  // --- Motore primario V3: cerca il PRIMO passaggio sfondo -> carta.
+  // In questo modo un bordo interno molto contrastato non può vincere sul perimetro esterno.
+  var distMap=new Float32Array(W*H);
+  for(var yy0=0;yy0<H;yy0++){
+    for(var xx0=0;xx0<W;xx0++){
+      var qq=(yy0*W+xx0)*4,dr=img[qq]-bg[0],dg=img[qq+1]-bg[1],db=img[qq+2]-bg[2];
+      distMap[yy0*W+xx0]=Math.sqrt(dr*dr+dg*dg+db*db);
+    }
+  }
+  var outerThr=Math.max(30,Math.min(105,bgScale*1.18));
+
+  function localDist(x,y){
+    x=Math.round(x);y=Math.round(y);
+    var sum=0,n=0;
+    for(var dy=-1;dy<=1;dy++)for(var dx=-1;dx<=1;dx++){
+      var px=x+dx,py=y+dy;
+      if(px>=0&&px<W&&py>=0&&py<H){sum+=distMap[py*W+px];n++}
+    }
+    return n?sum/n:0;
+  }
+  function stableCardX(x,y,dir){
+    var good=0;
+    for(var k=0;k<5;k++){
+      var xx=x+dir*k;
+      if(xx<1||xx>W-2)break;
+      if(localDist(xx,y)>outerThr)good++;
+    }
+    return good>=4;
+  }
+  function stableCardY(x,y,dir){
+    var good=0;
+    for(var k=0;k<5;k++){
+      var yy=y+dir*k;
+      if(yy<1||yy>H-2)break;
+      if(localDist(x,yy)>outerThr)good++;
+    }
+    return good>=4;
+  }
+
+  async function scanOuterEntries(){
+    var L=[],R=[],T=[],B=[];
+    var y0=Math.round(H*.16),y1=Math.round(H*.84),ys=Math.max(3,Math.round(H/38));
+    for(var y=y0;y<=y1;y+=ys){
+      var foundL=null,foundR=null;
+      for(var x=2;x<Math.round(W*.52);x++){
+        if(stableCardX(x,y,1)){foundL=x;break}
+      }
+      for(var xr=W-3;xr>Math.round(W*.48);xr--){
+        if(stableCardX(xr,y,-1)){foundR=xr;break}
+      }
+      if(foundL!=null)L.push({x:foundL,y:y});
+      if(foundR!=null)R.push({x:foundR,y:y});
+      if((L.length+R.length)%10===0)await nextFrame();
+    }
+
+    var x0=Math.round(W*.16),x1=Math.round(W*.84),xs=Math.max(3,Math.round(W/30));
+    for(var x2=x0;x2<=x1;x2+=xs){
+      var foundT=null,foundB=null;
+      for(var yt=2;yt<Math.round(H*.52);yt++){
+        if(stableCardY(x2,yt,1)){foundT=yt;break}
+      }
+      for(var yb=H-3;yb>Math.round(H*.48);yb--){
+        if(stableCardY(x2,yb,-1)){foundB=yb;break}
+      }
+      if(foundT!=null)T.push({x:x2,y:foundT});
+      if(foundB!=null)B.push({x:x2,y:foundB});
+      if((T.length+B.length)%10===0)await nextFrame();
+    }
+    return {L:L,R:R,T:T,B:B};
+  }
+
+  function median(a){
+    if(!a.length)return 0;
+    var b=a.slice().sort(function(x,y){return x-y}),m=Math.floor(b.length/2);
+    return b.length%2?b[m]:(b[m-1]+b[m])/2;
+  }
+  function fitXofY(points){
+    if(points.length<6)return null;
+    function fit(arr){
+      var sy=0,sx=0,syy=0,syx=0,n=arr.length;
+      arr.forEach(function(p){sy+=p.y;sx+=p.x;syy+=p.y*p.y;syx+=p.y*p.x});
+      var den=n*syy-sy*sy;
+      var a=Math.abs(den)<1e-6?0:(n*syx-sy*sx)/den;
+      var b=(sx-a*sy)/n;
+      return {a:a,b:b};
+    }
+    var f1=fit(points);
+    var res=points.map(function(p){return Math.abs(p.x-(f1.a*p.y+f1.b))});
+    var med=median(res),lim=Math.max(2.2,med*2.8);
+    var keep=points.filter(function(p){return Math.abs(p.x-(f1.a*p.y+f1.b))<=lim});
+    var f2=fit(keep.length>=6?keep:points);
+    f2.n=keep.length;f2.residual=median((keep.length?keep:points).map(function(p){return Math.abs(p.x-(f2.a*p.y+f2.b))}));
+    return f2;
+  }
+  function fitYofX(points){
+    if(points.length<6)return null;
+    function fit(arr){
+      var sx=0,sy=0,sxx=0,sxy=0,n=arr.length;
+      arr.forEach(function(p){sx+=p.x;sy+=p.y;sxx+=p.x*p.x;sxy+=p.x*p.y});
+      var den=n*sxx-sx*sx;
+      var a=Math.abs(den)<1e-6?0:(n*sxy-sx*sy)/den;
+      var b=(sy-a*sx)/n;
+      return {a:a,b:b};
+    }
+    var f1=fit(points);
+    var res=points.map(function(p){return Math.abs(p.y-(f1.a*p.x+f1.b))});
+    var med=median(res),lim=Math.max(2.2,med*2.8);
+    var keep=points.filter(function(p){return Math.abs(p.y-(f1.a*p.x+f1.b))<=lim});
+    var f2=fit(keep.length>=6?keep:points);
+    f2.n=keep.length;f2.residual=median((keep.length?keep:points).map(function(p){return Math.abs(p.y-(f2.a*p.x+f2.b))}));
+    return f2;
+  }
+  function intersectXY(v,h){
+    var den=1-h.a*v.a;
+    if(Math.abs(den)<1e-5)return null;
+    var y=(h.a*v.b+h.b)/den;
+    return {x:v.a*y+v.b,y:y};
+  }
+  function quadArea(q){
+    var ss=0;
+    for(var ii=0;ii<4;ii++){var aa=q[ii],bb=q[(ii+1)%4];ss+=aa.x*bb.y-bb.x*aa.y}
+    return Math.abs(ss)/2;
+  }
+  function lineLen(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+
+  async function detectOuterByBackground(){
+    if(onProgress)onProgress('Cerco il perimetro esterno…');
+    var e=await scanOuterEntries();
+    var lf=fitXofY(e.L),rf=fitXofY(e.R),tf=fitYofX(e.T),bf=fitYofX(e.B);
+    if(!lf||!rf||!tf||!bf)return null;
+
+    var q=[intersectXY(lf,tf),intersectXY(rf,tf),intersectXY(rf,bf),intersectXY(lf,bf)];
+    if(q.some(function(p){return !p||!isFinite(p.x)||!isFinite(p.y)}))return null;
+    if(q.some(function(p){return p.x<-W*.03||p.x>W*1.03||p.y<-H*.03||p.y>H*1.03}))return null;
+
+    var area=quadArea(q)/(W*H);
+    var top=lineLen(q[0],q[1]),bot=lineLen(q[3],q[2]),left=lineLen(q[0],q[3]),right=lineLen(q[1],q[2]);
+    var ratio=((top+bot)/2)/Math.max(1,(left+right)/2);
+    var expected=game==='ygo'?59/86:63/88;
+    var ratioErr=Math.abs(Math.log(Math.max(.01,ratio/expected)));
+    var support=Math.min(1,(Math.min(e.L.length,e.R.length)/18))*Math.min(1,(Math.min(e.T.length,e.B.length)/14));
+    var residual=(lf.residual+rf.residual+tf.residual+bf.residual)/4;
+
+    if(area<.24||area>.91||ratioErr>.31||support<.38||residual>8)return null;
+
+    var outOk=0,inOk=0,total=0,cxq=(q[0].x+q[1].x+q[2].x+q[3].x)/4,cyq=(q[0].y+q[1].y+q[2].y+q[3].y)/4;
+    for(var si=0;si<4;si++){
+      var a=q[si],b=q[(si+1)%4],dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1;
+      var nx=-dy/len,ny=dx/len,mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      if(Math.hypot(mid.x+nx*5-cxq,mid.y+ny*5-cyq)<Math.hypot(mid.x-nx*5-cxq,mid.y-ny*5-cyq)){nx=-nx;ny=-ny}
+      for(var kk=2;kk<=10;kk+=2){
+        var tt=.08+.84*(kk-2)/8,px=a.x+dx*tt,py=a.y+dy*tt;
+        var od=localDist(px+nx*4,py+ny*4),id=localDist(px-nx*5,py-ny*5);
+        if(od<outerThr*1.05)outOk++;
+        if(id>outerThr*.88)inOk++;
+        total++;
+      }
+    }
+    var outerScore=total?outOk/total:0,innerScore=total?inOk/total:0;
+    if(outerScore<.52||innerScore<.52)return null;
+
+    var confidence=.36*support+.26*Math.max(0,1-residual/8)+.20*outerScore+.18*innerScore;
+    confidence*=Math.max(.45,1-ratioErr/.31);
+
+    return {
+      points:q.map(function(p){return{x:p.x/s,y:p.y/s}}),
+      confidence:Math.max(0,Math.min(1,confidence)),
+      metrics:{method:'outer-scan',area:area,ratio:ratio,support:support,residual:residual,outside:outerScore,inside:innerScore}
+    };
+  }
+
+  var outerCandidate=await detectOuterByBackground();
+  if(outerCandidate&&outerCandidate.confidence>=.48){
+    if(onProgress)onProgress('Perimetro esterno trovato.');
+    return outerCandidate;
+  }
+
   function bgDist(x,y){return colorDistance(rgb(x,y),bg)}
   function rectCorners(mx,my,h,deg){
     var ratio=game==='ygo'?59/86:63/88,w=h*ratio,t=deg*Math.PI/180;
@@ -362,8 +539,10 @@ async function lightDetectCorners(source,game,onProgress){
     var inn=insideScores.reduce(function(a,v){return a+v},0)/4;
     var con=contrastScores.reduce(function(a,v){return a+v},0)/4;
     var area=Math.abs((q[0].x*q[1].y-q[1].x*q[0].y)+(q[1].x*q[2].y-q[2].x*q[1].y)+(q[2].x*q[3].y-q[3].x*q[2].y)+(q[3].x*q[0].y-q[0].x*q[3].y))/2/(W*H);
-    var score=.28*minSide+.20*avgSide+.23*out+.16*inn+.10*con+.03*Math.min(1,area/.55);
-    if(out<.30)score*=.72;
+    var areaScore=Math.min(1,area/.58);
+    var score=.16*minSide+.12*avgSide+.34*out+.18*inn+.08*con+.12*areaScore;
+    if(out<.42)score*=.55;
+    if(area<.34)score*=.72;
     if(minSide<.30)score*=.65;
     return {score:score,outside:out,inside:inn,minSide:minSide,area:area};
   }
@@ -386,7 +565,7 @@ async function lightDetectCorners(source,game,onProgress){
   }
 
   var coarse=await search({
-    hs:values(H*.46,H*.91,8),
+    hs:values(H*.58,H*.94,8),
     angles:values(-10,10,7),
     xs:values(W*.36,W*.64,5),
     ys:values(H*.34,H*.66,5)
