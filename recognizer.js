@@ -566,52 +566,41 @@ function quickCardDetect(source,game){
   var sw=source.width,sh=source.height;
   if(!sw||!sh)return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  // Hough leggero su immagine piccola: trova QUATTRO LINEE, non un rettangolo approssimato.
-  var max=340,sc=Math.min(1,max/Math.max(sw,sh));
+  var max=360,sc=Math.min(1,max/Math.max(sw,sh));
   var w=Math.max(100,Math.round(sw*sc)),h=Math.max(100,Math.round(sh*sc));
   var cv=document.createElement('canvas');cv.width=w;cv.height=h;
   var ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,w,h);
-  var px=ctx.getImageData(0,0,w,h).data;
+  var rgba=ctx.getImageData(0,0,w,h).data;
   var gray=new Float32Array(w*h),mag=new Float32Array(w*h),ang=new Float32Array(w*h);
-  for(var i=0,p=0;i<gray.length;i++,p+=4)gray[i]=.299*px[p]+.587*px[p+1]+.114*px[p+2];
+  for(var i=0,p=0;i<gray.length;i++,p+=4)gray[i]=.299*rgba[p]+.587*rgba[p+1]+.114*rgba[p+2];
 
-  // Sobel.
   var hist=new Uint32Array(256),count=0;
-  for(var y=1;y<h-1;y++){
-    for(var x=1;x<w-1;x++){
-      var i0=y*w+x;
-      var gx=-gray[i0-w-1]-2*gray[i0-1]-gray[i0+w-1]+gray[i0-w+1]+2*gray[i0+1]+gray[i0+w+1];
-      var gy=-gray[i0-w-1]-2*gray[i0-w]-gray[i0-w+1]+gray[i0+w-1]+2*gray[i0+w]+gray[i0+w+1];
-      var m=Math.hypot(gx,gy);mag[i0]=m;
-      var a=Math.atan2(gy,gx)*180/Math.PI;if(a<0)a+=180;ang[i0]=a;
-      var hb=Math.max(0,Math.min(255,Math.round(m/4)));hist[hb]++;count++;
-    }
+  for(var y=1;y<h-1;y++)for(var x=1;x<w-1;x++){
+    var z=y*w+x;
+    var gx=-gray[z-w-1]-2*gray[z-1]-gray[z+w-1]+gray[z-w+1]+2*gray[z+1]+gray[z+w+1];
+    var gy=-gray[z-w-1]-2*gray[z-w]-gray[z-w+1]+gray[z+w-1]+2*gray[z+w]+gray[z+w+1];
+    var m=Math.hypot(gx,gy);mag[z]=m;
+    var a=Math.atan2(gy,gx)*180/Math.PI;if(a<0)a+=180;ang[z]=a;
+    hist[Math.max(0,Math.min(255,Math.round(m/4)))]++;count++;
   }
-  var target=Math.round(count*.84),acc=0,bin=0;
+  var target=Math.round(count*.82),acc=0,bin=0;
   for(;bin<256;bin++){acc+=hist[bin];if(acc>=target)break}
-  var edgeThr=Math.max(24,bin*4);
+  var edgeThr=Math.max(22,bin*4);
 
-  var diag=Math.ceil(Math.hypot(w,h)),rhoN=diag*2+1;
-  function thetaList(from,to,step){
-    var a=[];for(var t=from;t<=to;t+=step)a.push(t);return a;
-  }
-  var tv=thetaList(-24,24,2),th=thetaList(66,114,2);
   function normTheta(t){while(t<0)t+=180;while(t>=180)t-=180;return t}
   function angleDiff(a,b){var d=Math.abs(normTheta(a)-normTheta(b));return Math.min(d,180-d)}
-
+  var diag=Math.ceil(Math.hypot(w,h)),rhoN=diag*2+1;
+  function thetaList(from,to,step){var a=[];for(var t=from;t<=to;t+=step)a.push(t);return a}
   function buildHough(thetas){
     var A=Array.from({length:thetas.length},function(){return new Float32Array(rhoN)});
     var trig=thetas.map(function(t){var r=t*Math.PI/180;return {c:Math.cos(r),s:Math.sin(r)}});
-    for(var y=1;y<h-1;y+=2){
-      for(var x=1;x<w-1;x+=2){
-        var idx=y*w+x,m=mag[idx];if(m<edgeThr)continue;
-        var ga=ang[idx];
-        for(var ti=0;ti<thetas.length;ti++){
-          var nt=normTheta(thetas[ti]);
-          if(angleDiff(ga,nt)>10)continue;
-          var rho=Math.round(x*trig[ti].c+y*trig[ti].s)+diag;
-          if(rho>=0&&rho<rhoN)A[ti][rho]+=Math.min(700,m);
-        }
+    for(var y=1;y<h-1;y+=2)for(var x=1;x<w-1;x+=2){
+      var idx=y*w+x,m=mag[idx];if(m<edgeThr)continue;
+      var ga=ang[idx];
+      for(var ti=0;ti<thetas.length;ti++){
+        var nt=normTheta(thetas[ti]);if(angleDiff(ga,nt)>11)continue;
+        var rho=Math.round(x*trig[ti].c+y*trig[ti].s)+diag;
+        if(rho>=0&&rho<rhoN)A[ti][rho]+=Math.min(700,m);
       }
     }
     return {A:A,trig:trig,thetas:thetas};
@@ -622,117 +611,120 @@ function quickCardDetect(source,game){
       var row=H.A[ti];
       for(var r=2;r<rhoN-2;r++){
         var v=row[r];if(v<=0)continue;
-        if(v>=row[r-1]&&v>=row[r+1]&&v>=row[r-2]&&v>=row[r+2]){
+        if(v>=row[r-1]&&v>=row[r+1]&&v>=row[r-2]&&v>=row[r+2])
           arr.push({theta:H.thetas[ti],rho:r-diag,score:v,c:H.trig[ti].c,s:H.trig[ti].s});
-        }
       }
     }
     arr.sort(function(a,b){return b.score-a.score});
     var out=[];
     for(var i=0;i<arr.length&&out.length<count;i++){
       var p=arr[i];
-      if(out.every(function(q){return Math.abs(p.rho-q.rho)>9||angleDiff(p.theta,q.theta)>5}))out.push(p);
+      if(out.every(function(q){return Math.abs(p.rho-q.rho)>7||angleDiff(p.theta,q.theta)>4}))out.push(p);
     }
     return out;
   }
 
-  var vp=peaks(buildHough(tv),12),hp=peaks(buildHough(th),12);
+  var vp=peaks(buildHough(thetaList(-25,25,2)),16);
+  var hp=peaks(buildHough(thetaList(65,115,2)),16);
   if(vp.length<2||hp.length<2)return {found:false,points:null,confidence:0,width:sw,height:sh};
 
   function inter(a,b){
     var det=a.c*b.s-b.c*a.s;if(Math.abs(det)<1e-6)return null;
     return {x:(a.rho*b.s-b.rho*a.s)/det,y:(a.c*b.rho-b.c*a.rho)/det};
   }
-  function lineXAt(l,y){
-    if(Math.abs(l.c)<1e-6)return 1e9;
-    return (l.rho-y*l.s)/l.c;
-  }
-  function lineYAt(l,x){
-    if(Math.abs(l.s)<1e-6)return 1e9;
-    return (l.rho-x*l.c)/l.s;
-  }
-  function inside(p,m){
-    return p&&p.x>=-m&&p.x<=w+m&&p.y>=-m&&p.y<=h+m;
-  }
+  function lineXAt(l,y){return Math.abs(l.c)<1e-6?1e9:(l.rho-y*l.s)/l.c}
+  function lineYAt(l,x){return Math.abs(l.s)<1e-6?1e9:(l.rho-x*l.c)/l.s}
+  function inside(p,m){return p&&p.x>=-m&&p.x<=w+m&&p.y>=-m&&p.y<=h+m}
   function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
   function convex(q){
     var s=0;
     for(var i=0;i<4;i++){
       var a=q[i],b=q[(i+1)%4],d=q[(i+2)%4];
-      var z=(b.x-a.x)*(d.y-b.y)-(b.y-a.y)*(d.x-b.x);
-      if(Math.abs(z)<1e-4)continue;
-      if(!s)s=Math.sign(z);else if(Math.sign(z)!==s)return false;
+      var zz=(b.x-a.x)*(d.y-b.y)-(b.y-a.y)*(d.x-b.x);
+      if(Math.abs(zz)<1e-4)continue;
+      if(!s)s=Math.sign(zz);else if(Math.sign(zz)!==s)return false;
     }
     return true;
   }
-  function sampleSupport(a,b){
-    var n=32,strong=0,sum=0;
+  function rgbAt(x,y){
+    x=Math.max(0,Math.min(w-1,Math.round(x)));y=Math.max(0,Math.min(h-1,Math.round(y)));
+    var p=(y*w+x)*4;return [rgba[p],rgba[p+1],rgba[p+2]];
+  }
+  function colorDist(a,b){
+    var dr=a[0]-b[0],dg=a[1]-b[1],db=a[2]-b[2];
+    return Math.sqrt(dr*dr+dg*dg+db*db);
+  }
+  function sideStats(a,b,cx,cy){
     var dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len;
+    var mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    if(Math.hypot(mx+nx*5-cx,my+ny*5-cy)>Math.hypot(mx-nx*5-cx,my-ny*5-cy)){nx=-nx;ny=-ny}
+    var strong=0,edgeSum=0,contrastSum=0,innerColors=[],n=28,off=Math.max(2,Math.min(5,len*.018));
     for(var k=0;k<n;k++){
-      var t=(k+.5)/n,x=a.x+dx*t,y=a.y+dy*t,best=0;
+      var t=.035+.93*k/(n-1),x=a.x+dx*t,y=a.y+dy*t,best=0;
       for(var o=-2;o<=2;o++){
-        var xx=Math.round(x+nx*o),yy=Math.round(y+ny*o);
+        var xx=Math.round(x+(-dy/len)*o),yy=Math.round(y+(dx/len)*o);
         if(xx<1||xx>=w-1||yy<1||yy>=h-1)continue;
         best=Math.max(best,mag[yy*w+xx]);
       }
-      sum+=best;if(best>=edgeThr*.72)strong++;
+      edgeSum+=best;if(best>=edgeThr*.70)strong++;
+      var ci=rgbAt(x+nx*off,y+ny*off),co=rgbAt(x-nx*off,y-ny*off);
+      contrastSum+=colorDist(ci,co);innerColors.push(ci);
     }
-    return {avg:sum/n,strong:strong/n};
+    var mean=[0,0,0];
+    innerColors.forEach(function(v){mean[0]+=v[0];mean[1]+=v[1];mean[2]+=v[2]});
+    mean=mean.map(function(v){return v/innerColors.length});
+    var dev=0;innerColors.forEach(function(v){dev+=colorDist(v,mean)});dev/=innerColors.length;
+    return {edge:edgeSum/n,strong:strong/n,contrast:contrastSum/n,innerDev:dev};
   }
 
   var ratio=game==='ygo'?59/86:63/88,best=null,midY=h/2,midX=w/2;
   for(var i=0;i<vp.length;i++)for(var j=i+1;j<vp.length;j++){
-    var va=vp[i],vb=vp[j];
-    var xa=lineXAt(va,midY),xb=lineXAt(vb,midY);
-    var L=xa<xb?va:vb,R=xa<xb?vb:va;
-    var sepX=lineXAt(R,midY)-lineXAt(L,midY);
-    if(sepX<w*.14||sepX>w*.92)continue;
+    var va=vp[i],vb=vp[j],xa=lineXAt(va,midY),xb=lineXAt(vb,midY);
+    var L=xa<xb?va:vb,R=xa<xb?vb:va,sepX=lineXAt(R,midY)-lineXAt(L,midY);
+    if(sepX<w*.15||sepX>w*.94)continue;
 
     for(var u=0;u<hp.length;u++)for(var v=u+1;v<hp.length;v++){
-      var ha=hp[u],hb=hp[v];
-      var ya=lineYAt(ha,midX),yb=lineYAt(hb,midX);
-      var T=ya<yb?ha:hb,B=ya<yb?hb:ha;
-      var sepY=lineYAt(B,midX)-lineYAt(T,midX);
-      if(sepY<h*.18||sepY>h*.96)continue;
+      var ha=hp[u],hb=hp[v],ya=lineYAt(ha,midX),yb=lineYAt(hb,midX);
+      var T=ya<yb?ha:hb,B=ya<yb?hb:ha,sepY=lineYAt(B,midX)-lineYAt(T,midX);
+      if(sepY<h*.20||sepY>h*.97)continue;
 
       var q=[inter(L,T),inter(R,T),inter(R,B),inter(L,B)];
-      if(q.some(function(p){return !inside(p,4)}))continue;
+      if(q.some(function(p){return !inside(p,5)}))continue;
       if(!convex(q))continue;
 
       var tw=dist(q[0],q[1]),bw=dist(q[3],q[2]),lh=dist(q[0],q[3]),rh=dist(q[1],q[2]);
       var mw=(tw+bw)/2,mh=(lh+rh)/2,rr=mw/Math.max(1,mh);
-      var re=Math.abs(rr-ratio)/ratio;if(re>.14)continue;
+      var re=Math.abs(rr-ratio)/ratio;if(re>.135)continue;
       var oppW=Math.min(tw,bw)/Math.max(tw,bw),oppH=Math.min(lh,rh)/Math.max(lh,rh);
       if(oppW<.80||oppH<.80)continue;
-      var area=polyArea(q)/(w*h);if(area<.035||area>.84)continue;
+      var area=polyArea(q)/(w*h);if(area<.04||area>.88)continue;
 
-      var s0=sampleSupport(q[0],q[1]),s1=sampleSupport(q[1],q[2]),s2=sampleSupport(q[2],q[3]),s3=sampleSupport(q[3],q[0]);
-      var minStrong=Math.min(s0.strong,s1.strong,s2.strong,s3.strong);
-      if(minStrong<.48)continue;
-      var support=(s0.strong+s1.strong+s2.strong+s3.strong)/4;
-      var edgeAvg=(s0.avg+s1.avg+s2.avg+s3.avg)/4;
+      var cx=(q[0].x+q[1].x+q[2].x+q[3].x)/4,cy=(q[0].y+q[1].y+q[2].y+q[3].y)/4;
+      var s0=sideStats(q[0],q[1],cx,cy),s1=sideStats(q[1],q[2],cx,cy),s2=sideStats(q[2],q[3],cx,cy),s3=sideStats(q[3],q[0],cx,cy);
+      var ss=[s0,s1,s2,s3],minStrong=Math.min.apply(null,ss.map(function(s){return s.strong}));
+      if(minStrong<.44)continue;
 
-      var margin=Math.min(
-        q[0].x,q[3].x,w-q[1].x,w-q[2].x,
-        q[0].y,q[1].y,h-q[2].y,h-q[3].y
-      )/Math.min(w,h);
-      var frameFactor=margin<.010?.25:margin<.022?.55:margin<.04?.80:1;
+      var support=ss.reduce(function(a,s){return a+s.strong},0)/4;
+      var edgeNorm=Math.min(1,ss.reduce(function(a,s){return a+s.edge},0)/(4*edgeThr*2.2));
+      var contrast=Math.min(1,ss.reduce(function(a,s){return a+s.contrast},0)/(4*75));
+      var uniformity=Math.max(0,1-Math.min(1,ss.reduce(function(a,s){return a+s.innerDev},0)/(4*82)));
+      var areaPref=Math.min(1,area/.62);
+      var ratioFit=Math.max(0,1-re/.135);
 
-      var center={x:(q[0].x+q[1].x+q[2].x+q[3].x)/4,y:(q[0].y+q[1].y+q[2].y+q[3].y)/4};
-      var centerErr=Math.hypot((center.x-w/2)/w,(center.y-h/2)/h);
-      var score=edgeAvg*support*(1-re*2.3)*(1-Math.min(.26,centerErr*.35))*frameFactor*(.86+.14*Math.min(1,area/.42));
-      if(!best||score>best.score)best={q:q,score:score,re:re,area:area,support:support,minStrong:minStrong,oppW:oppW,oppH:oppH,margin:margin};
+      // Il bordo fisico è normalmente il quadrilatero COMPLETO più esterno.
+      // Area ha molto peso; l'intensità pura del bordo non può più far vincere la cornice interna stampata.
+      var score=.31*areaPref+.22*support+.15*edgeNorm+.18*contrast+.08*uniformity+.06*ratioFit;
+
+      // A parità quasi completa, scegli il candidato più grande.
+      if(!best||score>best.score+.018||(Math.abs(score-best.score)<=.018&&area>best.area)){
+        best={q:q,score:score,re:re,area:area,support:support,minStrong:minStrong,contrast:contrast,uniformity:uniformity,oppW:oppW,oppH:oppH};
+      }
     }
   }
 
   if(!best)return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  // Nessuna espansione artificiale: i punti sono quelli dei 4 lati scelti.
-  var conf=(1-Math.min(1,best.re/.14))*.28+
-           Math.min(1,best.support)*.38+
-           Math.min(1,best.minStrong)*.20+
-           Math.min(1,best.area/.42)*.14;
-  if(best.margin<.015)conf*=.55;
+  var conf=.30*Math.min(1,best.area/.62)+.28*best.support+.18*best.contrast+.12*best.uniformity+.12*Math.max(0,1-best.re/.135);
   var full=best.q.map(function(p){return {x:p.x/sc,y:p.y/sc}});
   return {found:true,points:full,confidence:Math.max(0,Math.min(1,conf)),width:sw,height:sh};
 }
@@ -783,7 +775,7 @@ async function prepareImportedPhoto(file,source){
     await yieldPaint();
     var game=rq('rgame').value==='ygo'?'ygo':'poke';
     recDetection=quickCardDetect(recOriginalCanvas,game);
-    if(recDetection&&recDetection.found&&(recDetection.confidence||0)<.60)recDetection={found:false,points:null,confidence:recDetection.confidence||0,width:recOriginalCanvas.width,height:recOriginalCanvas.height};
+    if(recDetection&&recDetection.found&&(recDetection.confidence||0)<.64)recDetection={found:false,points:null,confidence:recDetection.confidence||0,width:recOriginalCanvas.width,height:recOriginalCanvas.height};
     recCropFound=!!(recDetection&&recDetection.found);
 
     if(recCropFound){
