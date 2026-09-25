@@ -3,7 +3,8 @@
 
 var $=function(id){return document.getElementById(id)};
 var OWN_KEY='gradingCarte.collection.v2';
-var SET_CACHE_KEY='gradingCarte.sets.v3.';
+var SET_CACHE_KEY='gradingCarte.sets.v4.';
+var POKE_DATA_BASE='https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master/';
 var SET_STATS_KEY='gradingCarte.setStats.v1';
 var UI_KEY='gradingCarte.albumUI.v2';
 var owned=loadOwned();
@@ -131,10 +132,16 @@ async function loadSets(){
   }
   try{
     if(S.game==='poke'){
-      var j=await json('https://api.pokemontcg.io/v2/sets?orderBy=-releaseDate&pageSize=250');
-      S.sets=(j.data||[]).map(function(x){
+      var src;
+      try{
+        src=await json(POKE_DATA_BASE+'sets/en.json',22000);
+      }catch(primaryError){
+        var j=await json('https://api.pokemontcg.io/v2/sets?orderBy=-releaseDate&pageSize=250');
+        src=j.data||[];
+      }
+      S.sets=(src||[]).map(function(x){
         return {id:x.id,name:x.name,series:x.series||'',code:x.ptcgoCode||x.id,date:x.releaseDate||'',printedTotal:Number(x.printedTotal)||0,total:Number(x.total)||Number(x.printedTotal)||0,logo:x.images&&x.images.logo||''};
-      });
+      }).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''))||collator.compare(a.name,b.name)});
     }else{
       var y=await json('https://db.ygoprodeck.com/api/v7/cardsets.php');
       S.sets=(y||[]).map(function(x){
@@ -190,6 +197,20 @@ function applySetSearch(preserveId){
   }).join('');
 }
 
+function exactPokeMembership(card,set){
+  if(!card||!set)return false;
+  if(card.set&&String(card.set.id||'').toLowerCase()===String(set.id).toLowerCase())return true;
+  return String(card.id||'').toLowerCase().indexOf(String(set.id).toLowerCase()+'-')===0;
+}
+function mergePokeMarket(base,market){
+  if(!market)return base;
+  var out=Object.assign({},base);
+  if(market.images)out.images=market.images;
+  if(market.tcgplayer)out.tcgplayer=market.tcgplayer;
+  if(market.cardmarket)out.cardmarket=market.cardmarket;
+  if(market.rarity)out.rarity=market.rarity;
+  return out;
+}
 function naturalNumber(a,b){return collator.compare(String(a.number||''),String(b.number||''))}
 async function loadCards(){
   var idx=$('setSelect').value;
@@ -204,7 +225,7 @@ async function loadCards(){
   $('cards').innerHTML='<div class="empty">Carico tutte le carte dell’espansione...</div>';
   $('status').textContent='Caricamento completo di '+S.set.name+'...';
   try{
-    var ck='albumcards:v4:'+S.game+':'+S.set.id;
+    var ck='albumcards:v5:'+S.game+':'+S.set.id;
     var cached=sessionGet(ck);
     if(cached&&Array.isArray(cached.cards)){
       S.cards=cached.cards;S.loadInfo=cached.info||null;
@@ -220,9 +241,10 @@ async function loadCards(){
     updateSetMeta();
     var expected=S.loadInfo&&S.loadInfo.expected||S.set.total||0;
     if(expected&&S.cards.length<expected){
-      $('status').textContent='⚠ Caricate '+S.cards.length+' carte su '+expected+' dichiarate. La fonte gratuita non ne ha restituite altre; riproverò al prossimo caricamento.';
+      $('status').textContent='⚠ Caricate '+S.cards.length+' carte su '+expected+' dichiarate. La fonte catalogo non ne ha restituite altre.';
     }else{
-      $('status').textContent=S.cards.length+' carte/stampe caricate per '+S.set.name+'.';
+      var verified=S.game==='poke'&&S.loadInfo&&S.loadInfo.source?' · appartenenza verificata per codice '+S.set.id.toUpperCase():'';
+      $('status').textContent=S.cards.length+' carte/stampe caricate per '+S.set.name+verified+'.';
     }
   }catch(e){
     $('cards').innerHTML='<div class="empty">Non riesco a caricare questa espansione.</div>';
@@ -230,22 +252,42 @@ async function loadCards(){
   }
 }
 async function loadPokeCards(set){
-  var all=[],seen={},page=1,expected=Number(set.total)||0,emptyPages=0,lastUnique=0;
-  while(page<=50){
-    var url='https://api.pokemontcg.io/v2/cards?q='+encodeURIComponent('set.id:'+set.id)+'&orderBy=number&pageSize=250&page='+page;
-    var j=await json(url);
-    var data=j.data||[];
-    expected=Math.max(expected,Number(j.totalCount)||0);
-    data.forEach(function(c){if(c&&c.id&&!seen[c.id]){seen[c.id]=1;all.push(c)}});
-    $('status').textContent='Caricamento '+set.name+': '+all.length+(expected?' / '+expected:'')+'...';
-    if(!data.length){emptyPages++;if(emptyPages>=1)break}else emptyPages=0;
-    if(expected&&all.length>=expected)break;
-    if(all.length===lastUnique&&page>1)break;
-    lastUnique=all.length;
-    page++;
+  // Fonte autorevole per l'appartenenza al set: file JSON pubblico del catalogo Pokémon TCG Data.
+  // In questo modo ME55 e ME55C non possono essere mescolati anche se l'API prezzi risponde male.
+  var rawUrl=POKE_DATA_BASE+'cards/en/'+encodeURIComponent(set.id)+'.json';
+  var exact=await json(rawUrl,22000);
+  if(!Array.isArray(exact))throw new Error('Catalogo set non valido');
+  exact=exact.filter(function(card){return exactPokeMembership(card,set)});
+  if(!exact.length)throw new Error('Nessuna carta trovata nel catalogo esatto '+set.id);
+
+  var byId={};
+  exact.forEach(function(card){byId[String(card.id).toLowerCase()]=card});
+  var marketCount=0;
+
+  // Arricchimento facoltativo: se il vecchio API risponde, usiamo SOLO record dello stesso set esatto.
+  // Qualunque 500 o risposta contaminata viene ignorata senza alterare il catalogo.
+  try{
+    var page=1,total=1,guard=0;
+    while(page<=10&&guard<10){
+      var q='set.id:'+set.id;
+      var api=await json('https://api.pokemontcg.io/v2/cards?q='+encodeURIComponent(q)+'&orderBy=number&pageSize=250&page='+page,12000);
+      var rows=(api.data||[]).filter(function(card){return exactPokeMembership(card,set)});
+      rows.forEach(function(card){
+        var k=String(card.id||'').toLowerCase();
+        if(byId[k]){byId[k]=mergePokeMarket(byId[k],card);marketCount++}
+      });
+      total=Number(api.totalCount)||0;
+      if(!(api.data||[]).length||page*250>=total)break;
+      page++;guard++;
+    }
+  }catch(e){
+    // Il catalogo resta valido anche quando l'endpoint prezzi è temporaneamente in HTTP 500.
   }
-  S.loadInfo={expected:expected,pages:page,loaded:all.length};
-  return all.map(function(c){return normalizePoke(c,set)}).sort(naturalNumber);
+
+  var cards=Object.keys(byId).map(function(k){return byId[k]});
+  S.loadInfo={expected:cards.length,pages:1,loaded:cards.length,source:'catalogo GitHub esatto',marketCount:marketCount};
+  $('status').textContent='Catalogo verificato '+set.id.toUpperCase()+': '+cards.length+' carte esatte'+(marketCount?' · prezzi arricchiti per '+marketCount:'')+'.';
+  return cards.map(function(card){return normalizePoke(card,set)}).sort(naturalNumber);
 }
 async function loadYgoCards(set){
   var all=[],url='https://db.ygoprodeck.com/api/v7/cardinfo.php?cardset='+encodeURIComponent(set.name)+'&num=100&offset=0',guard=0;
@@ -328,6 +370,8 @@ function updateSetStats(){
 function updateSetMeta(){
   if(!S.set)return;
   var parts=[S.game==='poke'?S.set.series:S.set.code,S.set.date,S.set.total?S.set.total+' carte dichiarate':''].filter(Boolean);
+  if(S.game==='poke'&&String(S.set.id).toLowerCase()==='me55c')parts.push('Classic Collection separata: 30 carte');
+  if(S.game==='poke'&&String(S.set.id).toLowerCase()==='me55')parts.push('set principale: 161 carte (128 numerate + carte extra)');
   var st=setStats[keyForSet(S.game,S.set.id)];
   if(st&&n(st.sum))parts.push('valore catalogo noto '+st.currency+Number(st.sum).toFixed(2)+' ('+st.priced+'/'+st.total+' con prezzo)');
   $('setMeta').textContent=parts.join(' · ');
