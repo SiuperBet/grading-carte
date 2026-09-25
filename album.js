@@ -287,7 +287,8 @@ async function loadPokeMasterCards(set){
   });
   var classic=parts[1].cards.map(function(card,i){
     card=Object.assign({},card);
-    card.masterGroup='Classic Collection';card.sourceSet='ME55C';card.sortIndex=1000+i;
+    var cn=parseInt(String(card.number||'').replace(/\D/g,''),10);
+    card.masterGroup='Classic Collection';card.sourceSet='ME55C';card.sortIndex=1000+(Number.isFinite(cn)?cn:i);
     return card;
   });
   var energy=masterEnergyCards();
