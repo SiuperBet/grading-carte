@@ -6,6 +6,8 @@ var recUrl=null;
 var recMatchedSetCode=null;
 var recBusy=false;
 var recPhotoSaved=false;
+var recAutoTimer=null;
+var recLastRecognizedUrl=null;
 var TESS_URL='https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js';
 
 function rq(id){return document.getElementById(id)}
@@ -319,7 +321,7 @@ async function catalogByAttacks(attacks,year,titles,col){
   }
   await Promise.all([worker(),worker(),worker(),worker()]);
   out.sort(function(a,b){return b.score-a.score});
-  return out.slice(0,16);
+  return out.slice(0,6);
 }
 async function findPokemon(top,bottom,middle,footer){
   var all=[top,middle,bottom,footer].join('\n');
@@ -582,6 +584,7 @@ async function recognize(src){
         if(recResults.length)data=data2;
       }
 
+      recLastRecognizedUrl=ocrSource;
       if(recResults.length){
         var method=data.det&&data.det.method?' · metodo '+data.det.method:'';
         setStatus('Riconoscimento completato: '+recResults.length+' candidato'+(recResults.length===1?'':'i')+' su un massimo di 3'+method+'. Controlla immagine, espansione e numero.');
@@ -903,7 +906,8 @@ async function prepareImportedPhoto(file,source){
   setStatus(source==='gallery'?'Carico la foto dalla galleria…':'Carico la foto scattata…');
   rq('rresults').innerHTML='';rq('rocr').value='';rq('rphotoActions').classList.remove('hide');
   rq('rDetectLegend').classList.add('hide');
-  recDetection=null;recCropFound=false;recOcrUrl=null;
+  recDetection=null;recCropFound=false;recOcrUrl=null;recLastRecognizedUrl=null;
+  if(recAutoTimer){clearTimeout(recAutoTimer);recAutoTimer=null;}
   try{
     var blobUrl=URL.createObjectURL(file),im=await loadImage(blobUrl);
     recOriginalCanvas=downscaleImage(im,1600);
@@ -982,13 +986,22 @@ rq('rmanualBtn').addEventListener('click',function(){
 window.addEventListener('cardcenter:aligned',function(ev){
   var d=ev&&ev.detail;if(!d||!d.url)return;
   recOcrUrl=d.url;
-  setStatus('✓ Carta raddrizzata pronta. Il prossimo riconoscimento userà questa copia allineata, mentre la foto originale resta salvata.');
+  setStatus('✓ Carta raddrizzata pronta. Avvio automaticamente il riconoscimento; la foto originale resta invariata.');
+  if(recAutoTimer)clearTimeout(recAutoTimer);
+  recAutoTimer=setTimeout(function(){
+    recAutoTimer=null;
+    if(recOcrUrl===d.url&&!recBusy)recognize(d.url);
+  },350);
 });
 window.addEventListener('cardcenter:useocr',function(ev){
   var d=ev&&ev.detail;if(!d||!d.url)return;
   recOcrUrl=d.url;
   rq('riconosci').classList.remove('hide');
-  setTimeout(function(){recognize(recOcrUrl)},0);
+  if(recLastRecognizedUrl===d.url&&recResults.length){
+    setStatus('✓ Riconoscimento già completato: mostro i candidati trovati.');
+    return;
+  }
+  setTimeout(function(){if(!recBusy)recognize(recOcrUrl)},0);
 });
 window.addEventListener('resize',function(){if(recDetection&&recDetection.found)setTimeout(drawRecognizerDetection,30)});
 })();
