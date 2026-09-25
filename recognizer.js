@@ -143,9 +143,35 @@ function parsePokemon(bottom,all){
     return candidates[0];
   }
 
-  // Senza separatore numero/totale non usiamo cifre isolate:
-  // potrebbero essere HP, danni degli attacchi o costi.
-  var t=bottom.toUpperCase();
+  // OCR del numero: corregge confusioni tipiche O/0, I/1, S/5.
+  var fixed=String(bottom||'').toUpperCase()
+    .replace(/[OQ]/g,'0').replace(/[IL|!]/g,'1').replace(/S/g,'5')
+    .replace(/\\/g,'/');
+  var loose=fixed.match(/(?:^|\s)(\d{1,4})\s*[/]\s*(\d{2,4})(?:\s|$)/);
+  if(loose){
+    var nn=parseInt(loose[1],10),tt=parseInt(loose[2],10);
+    if(nn>=0&&tt>=20&&tt<=500&&nn<=tt)return {number:String(nn),total:tt,raw:loose[0].trim(),score:2.8};
+  }
+
+  // Se la slash è sparita completamente, prova una ricostruzione SOLO su una sequenza breve
+  // proveniente dalla zona numero, non sull'intera carta.
+  var digitRuns=(fixed.match(/\b\d{3,6}\b/g)||[]);
+  var splitBest=null;
+  digitRuns.forEach(function(run){
+    for(var cut=1;cut<=Math.min(3,run.length-2);cut++){
+      var a=parseInt(run.slice(0,cut),10),b=parseInt(run.slice(cut),10);
+      if(a>=0&&b>=20&&b<=500&&a<=b){
+        var score=0;
+        if(run.slice(cut)[0]!=='0')score+=1;
+        if(b>=40&&b<=250)score+=1;
+        if(a>=1&&a<=250)score+=.5;
+        if(!splitBest||score>splitBest.score)splitBest={number:String(a),total:b,raw:run,score:1.7+score*.1};
+      }
+    }
+  });
+  if(splitBest)return splitBest;
+
+  var t=fixed;
   var sp=t.match(/\b(?:TG|GG|SV|SWSH|SM|XY|RC|SH|DP|BW)\s*\d{1,4}\b/i);
   if(sp)return {number:sp[0].replace(/\s/g,''),total:null,raw:sp[0],score:1};
   return {number:null,total:null,raw:'',score:0};
@@ -285,13 +311,18 @@ async function findPokemon(top,bottom,middle,footer){
   var exact=[];
   try{exact=await catalogByCollector(col,titles)}catch(e){}
   if(exact.length){
-    var topRaw=exact.slice(0,10),enriched=[];
+    var topRaw=exact.slice(0,12),enriched=[];
     for(var i=0;i<topRaw.length;i++){
-      var card=await enrichRawCandidate(topRaw[i].card);
-      enriched.push({card:card,score:pokeScore(card,titles,col,all)+1.2+attackScore(topRaw[i].card,attacks,titles)});
+      var rawCard=topRaw[i].card,card=await enrichRawCandidate(rawCard);
+      var sc=pokeScore(card,titles,col,all)+1.2+attackScore(rawCard,attacks,titles);
+      var relYear=rawCard.set&&String(rawCard.set.releaseDate||'').slice(0,4);
+      if(year&&relYear===String(year))sc+=.45;
+      enriched.push({card:card,score:sc});
     }
     enriched.sort(function(a,b){return b.score-a.score});
-    return {cards:enriched.slice(0,18).map(function(x){return x.card}),det:{titles:titles,collector:col,attacks:attacks,year:year,method:'numero/set'}};
+    var bestExact=enriched.length?enriched[0].score:0;
+    enriched=enriched.filter(function(x,i){return i<5&&x.score>=bestExact-.38});
+    return {cards:enriched.map(function(x){return x.card}),det:{titles:titles,collector:col,attacks:attacks,year:year,method:'numero/set'}};
   }
 
   // 2) Se il titolo è illeggibile, usa attacchi + anno (o totale set).
@@ -329,7 +360,9 @@ async function findPokemon(top,bottom,middle,footer){
     titles.forEach(function(t){best=Math.max(best,dice(b.name,t))});
     if(col.number&&numKey(b.localId)===numKey(col.number))best+=.8;
     return {brief:b,score:best};
-  }).sort(function(a,b){return b.score-a.score}).slice(0,36);
+  }).filter(function(x){
+    return x.score>=.50||(col.number&&numKey(x.brief.localId)===numKey(col.number));
+  }).sort(function(a,b){return b.score-a.score}).slice(0,24);
 
   var queue=scored.slice(),full=[];
   async function worker(){
@@ -343,7 +376,13 @@ async function findPokemon(top,bottom,middle,footer){
   }
   await Promise.all([worker(),worker(),worker(),worker(),worker(),worker()]);
   full.sort(function(a,b){return b.score-a.score});
-  return {cards:full.slice(0,18).map(function(x){return x.card}),det:{titles:titles,collector:col,attacks:attacks,year:year,method:'tcgdex'}};
+  var bestFull=full.length?full[0].score:0;
+  full=full.filter(function(x,i){
+    if(i>=8)return false;
+    if(col.number&&numKey(x.card.number)===numKey(col.number))return true;
+    return x.score>=.62&&x.score>=bestFull-.24;
+  });
+  return {cards:full.map(function(x){return x.card}),det:{titles:titles,collector:col,attacks:attacks,year:year,method:'tcgdex'}};
 }
 function ygoScore(c,titles,setCode,ocr){
   var best=0;titles.forEach(function(t){best=Math.max(best,dice(c.name,t))});best=Math.max(best,dice(c.name,ocr)*.8);
@@ -509,7 +548,8 @@ async function recognize(src){
       if(!recResults.length&&game==='poke'){
         setStatus('Prima lettura insufficiente. Faccio un secondo controllo sull’intera carta…');
         await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
-        var full=await worker.recognize(wholeForOCR(im));
+        var fullBase=recOriginalCanvas||im;
+        var full=await worker.recognize(wholeForOCR(fullBase));
         var fullText=full&&full.data&&full.data.text||'';
         var data2=await findPokemon(fullText,fullText,fullText,fullText);
         renderResults(game,data2,fullText,fullText);
