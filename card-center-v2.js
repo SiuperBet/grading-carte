@@ -119,13 +119,13 @@ function install(){
 }
 
 function visibleView(){
-  for(const id of ['riconosci','fine','prezzo','cap','start']){
+  for(const id of ['grading','riconosci','fine','prezzo','cap','start']){
     const x=el(id);if(x&&!x.classList.contains('hide'))return id;
   }
   return 'fine';
 }
 function hideViews(){
-  ['start','fine','cap','prezzo','riconosci'].forEach(id=>{const x=el(id);if(x)x.classList.add('hide')});
+  ['start','fine','cap','prezzo','riconosci','grading'].forEach(id=>{const x=el(id);if(x)x.classList.add('hide')});
 }
 function showOnly(stage){
   el('cc2A').classList.toggle('on',stage==='A');el('cc2B').classList.toggle('on',stage==='B');
