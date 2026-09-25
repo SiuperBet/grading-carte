@@ -499,7 +499,10 @@ async function cercaPrezzo(pagina){
     }
   }catch(e){
     st.classList.remove('hide');
-    st.textContent='Errore nel contattare il servizio prezzi ('+e.message+'). Riprova tra poco: potrebbe essere un limite temporaneo dell\u2019API gratuita, non un errore dell\u2019app.';
+    const reteGiu=e.message==='Failed to fetch'||e.name==='TypeError';
+    st.textContent=reteGiu
+      ? 'Non riesco a collegarmi a internet in questo momento. Controlla la connessione (Wi-Fi/dati) e tocca di nuovo "Cerca". Non è un errore dell\u2019app.'
+      : 'Il servizio prezzi ha risposto con un errore ('+e.message+'). Riprova tra poco: potrebbe essere un limite temporaneo dell\u2019API gratuita.';
   }
 }
 function tabellaCond(base,valuta,fonte,aggiornato){
