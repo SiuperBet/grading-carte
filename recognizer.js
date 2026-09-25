@@ -548,8 +548,7 @@ async function recognize(src){
       if(!recResults.length&&game==='poke'){
         setStatus('Prima lettura insufficiente. Faccio un secondo controllo sull’intera carta…');
         await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
-        var fullBase=recOriginalCanvas||im;
-        var full=await worker.recognize(wholeForOCR(fullBase));
+        var full=await worker.recognize(wholeForOCR(im));
         var fullText=full&&full.data&&full.data.text||'';
         var data2=await findPokemon(fullText,fullText,fullText,fullText);
         renderResults(game,data2,fullText,fullText);
@@ -843,7 +842,7 @@ async function prepareImportedPhoto(file,source){
 
     // Nuovo flusso V2: acquisizione = foto completa normalizzata. Nessun ritaglio automatico qui.
     recUrl=recOriginalCanvas.toDataURL('image/jpeg',.90);
-    recOcrUrl=recUrl;
+    recOcrUrl=null;
 
     try{
       if(typeof foto!=='undefined'){
@@ -877,12 +876,21 @@ window.handleRecognizerInput=function(input,source){
 }
 window.riconosciFotoImportata=async function(){
   if(!recUrl){setStatus('Prima scegli una foto.',true);return}
+  if(!recOcrUrl){
+    setStatus('Prima allinea la carta: conferma i 4 angoli e raddrizzala. Poi il riconoscimento userà solo la copia allineata.');
+    try{
+      rq('riconosci').classList.add('hide');
+      if(window.CardCenterV2&&CardCenterV2.open){
+        CardCenterV2.open(recUrl,{game:rq('rgame').value==='ygo'?'ygo':'poke',kind:'front'});
+      }else if(typeof apriCent==='function')apriCent(recUrl);
+    }catch(e){setStatus('Non riesco ad aprire l’allineamento: '+e.message,true)}
+    return;
+  }
   var b=rq('rRecognizeBtn');if(b&&b.disabled)return;
   if(b){b.disabled=true;b.textContent='Riconosco…'}
   try{
     await yieldPaint();
-    // Solo l'OCR usa una copia locale più stretta; anteprima e centratura restano sulla foto completa.
-    await recognize(recOcrUrl||recUrl);
+    await recognize(recOcrUrl);
   }finally{
     if(b){b.disabled=false;b.textContent='✨ Riconosci e valuta'}
   }
