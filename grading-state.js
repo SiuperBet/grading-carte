@@ -52,11 +52,14 @@ function loadImage(url){
 }
 async function compress(url){
   try{
+    if(/^data:image\/jpeg/i.test(url)&&url.length<1400000)return url;
+    await new Promise(function(r){setTimeout(r,0)});
     var im=await loadImage(url),w=im.naturalWidth||im.width,h=im.naturalHeight||im.height;
-    var scale=Math.min(1,1800/Math.max(w,h)),c=document.createElement('canvas');
+    var scale=Math.min(1,1000/Math.max(w,h)),c=document.createElement('canvas');
     c.width=Math.max(1,Math.round(w*scale));c.height=Math.max(1,Math.round(h*scale));
     c.getContext('2d').drawImage(im,0,0,c.width,c.height);
-    return c.toDataURL('image/jpeg',.84);
+    await new Promise(function(r){setTimeout(r,0)});
+    return c.toDataURL('image/jpeg',.78);
   }catch(e){return url}
 }
 function visibleView(){
