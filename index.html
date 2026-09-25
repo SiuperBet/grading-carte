@@ -470,7 +470,7 @@ async function cercaPrezzo(){
   $('prisultati').innerHTML='';$('pcarta').classList.add('hide');
   try{
     if($('pgioco').value==='poke'){
-      const r=await fetch('https://api.pokemontcg.io/v2/cards?q=name:"'+encodeURIComponent(q)+'*"&pageSize=15');
+      const r=await fetch('https://api.pokemontcg.io/v2/cards?q=name:'+encodeURIComponent(q)+'*&pageSize=15');
       if(!r.ok)throw new Error('HTTP '+r.status);
       const j=await r.json();
       if(!j.data||!j.data.length){st.textContent='Nessuna carta trovata con questo nome.';return}
