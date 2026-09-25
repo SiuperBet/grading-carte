@@ -224,5 +224,28 @@ function detectBorders(canvas,dim,px){
 }
 function resetStability(){stable=0;lastNorm=null;autoLock=false;var o=overlay();if(o)o.getContext('2d').clearRect(0,0,o.width,o.height)}
 
-window.AutoCardVision={load:loadCV,detectCard:detect,live:live,cropCanvas:cropCanvas,cornersForCanvas:cornersForCanvas,detectBorders:detectBorders,reset:resetStability};
+
+async function warpFromPoints(source,points,outW,outH){
+  if(!source||!points||points.length!==4)throw new Error('4 angoli richiesti');
+  var CV=await loadCV(),src=CV.imread(source),srcTri=null,dstTri=null,M=null,dst=new CV.Mat(),out=document.createElement('canvas');
+  try{
+    var W=Math.max(120,Math.round(outW||630)),H=Math.max(120,Math.round(outH||880));
+    srcTri=CV.matFromArray(4,1,CV.CV_32FC2,[
+      points[0].x,points[0].y,
+      points[1].x,points[1].y,
+      points[2].x,points[2].y,
+      points[3].x,points[3].y
+    ]);
+    dstTri=CV.matFromArray(4,1,CV.CV_32FC2,[0,0,W-1,0,W-1,H-1,0,H-1]);
+    M=CV.getPerspectiveTransform(srcTri,dstTri);
+    CV.warpPerspective(src,dst,M,new CV.Size(W,H),CV.INTER_CUBIC,CV.BORDER_REPLICATE,new CV.Scalar());
+    out.width=W;out.height=H;CV.imshow(out,dst);
+    return {canvas:out,url:out.toDataURL('image/jpeg',.94)};
+  }finally{
+    try{src.delete()}catch(e){} try{dst.delete()}catch(e){}
+    try{if(srcTri)srcTri.delete()}catch(e){} try{if(dstTri)dstTri.delete()}catch(e){} try{if(M)M.delete()}catch(e){}
+  }
+}
+
+window.AutoCardVision={load:loadCV,detectCard:detect,live:live,cropCanvas:cropCanvas,cornersForCanvas:cornersForCanvas,detectBorders:detectBorders,warpFromPoints:warpFromPoints,reset:resetStability};
 })();
