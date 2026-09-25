@@ -107,6 +107,7 @@ async function resetSession(){
   location.reload();
 }
 window.resetGradingSession=resetSession;
+window.GradingPersist={savePhoto:putPhoto,saveMeta:saveMeta};
 
 var last=[];
 setInterval(function(){
