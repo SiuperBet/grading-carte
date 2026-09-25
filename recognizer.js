@@ -674,7 +674,7 @@ function quickCardDetect(source,game){
     innerColors.forEach(function(v){mean[0]+=v[0];mean[1]+=v[1];mean[2]+=v[2]});
     mean=mean.map(function(v){return v/innerColors.length});
     var dev=0;innerColors.forEach(function(v){dev+=colorDist(v,mean)});dev/=innerColors.length;
-    return {edge:edgeSum/n,strong:strong/n,contrast:contrastSum/n,innerDev:dev};
+    return {edge:edgeSum/n,strong:strong/n,contrast:contrastSum/n,innerDev:dev,mean:mean};
   }
 
   var ratio=game==='ygo'?59/86:63/88,best=null,midY=h/2,midX=w/2;
@@ -711,20 +711,30 @@ function quickCardDetect(source,game){
       var areaPref=Math.min(1,area/.62);
       var ratioFit=Math.max(0,1-re/.135);
 
-      // Il bordo fisico è normalmente il quadrilatero COMPLETO più esterno.
-      // Area ha molto peso; l'intensità pura del bordo non può più far vincere la cornice interna stampata.
-      var score=.31*areaPref+.22*support+.15*edgeNorm+.18*contrast+.08*uniformity+.06*ratioFit;
+      // La cornice fisica, a pochi pixel dal bordo, tende ad avere un aspetto coerente sui quattro lati.
+      // Questo elimina i quadrilateri "ibridi" (es. lato alto nero interno + lati esterni gialli).
+      var frameMean=[0,0,0];
+      ss.forEach(function(s){frameMean[0]+=s.mean[0];frameMean[1]+=s.mean[1];frameMean[2]+=s.mean[2]});
+      frameMean=frameMean.map(function(v){return v/4});
+      var frameDev=ss.reduce(function(a,s){return a+colorDist(s.mean,frameMean)},0)/4;
+      var frameConsistency=Math.max(0,1-Math.min(1,frameDev/92));
+
+      // Preferenza forte per il perimetro fisico completo; il solo contrasto non basta.
+      var score=.27*areaPref+.18*support+.10*edgeNorm+.14*contrast+.07*uniformity+.19*frameConsistency+.05*ratioFit;
+
+      // Un candidato molto incoerente come colore di cornice non può vincere solo grazie a una linea nera forte.
+      if(frameConsistency<.34)score*=.62;
 
       // A parità quasi completa, scegli il candidato più grande.
-      if(!best||score>best.score+.018||(Math.abs(score-best.score)<=.018&&area>best.area)){
-        best={q:q,score:score,re:re,area:area,support:support,minStrong:minStrong,contrast:contrast,uniformity:uniformity,oppW:oppW,oppH:oppH};
+      if(!best||score>best.score+.016||(Math.abs(score-best.score)<=.016&&area>best.area)){
+        best={q:q,score:score,re:re,area:area,support:support,minStrong:minStrong,contrast:contrast,uniformity:uniformity,frameConsistency:frameConsistency,oppW:oppW,oppH:oppH};
       }
     }
   }
 
   if(!best)return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  var conf=.30*Math.min(1,best.area/.62)+.28*best.support+.18*best.contrast+.12*best.uniformity+.12*Math.max(0,1-best.re/.135);
+  var conf=.26*Math.min(1,best.area/.62)+.23*best.support+.14*best.contrast+.10*best.uniformity+.17*(best.frameConsistency||0)+.10*Math.max(0,1-best.re/.135);
   var full=best.q.map(function(p){return {x:p.x/sc,y:p.y/sc}});
   return {found:true,points:full,confidence:Math.max(0,Math.min(1,conf)),width:sw,height:sh};
 }
@@ -793,7 +803,7 @@ async function prepareImportedPhoto(file,source){
     await yieldPaint();
     var game=rq('rgame').value==='ygo'?'ygo':'poke';
     recDetection=quickCardDetect(recOriginalCanvas,game);
-    if(recDetection&&recDetection.found&&(recDetection.confidence||0)<.64)recDetection={found:false,points:null,confidence:recDetection.confidence||0,width:recOriginalCanvas.width,height:recOriginalCanvas.height};
+    if(recDetection&&recDetection.found&&(recDetection.confidence||0)<.68)recDetection={found:false,points:null,confidence:recDetection.confidence||0,width:recOriginalCanvas.width,height:recOriginalCanvas.height};
     recCropFound=!!(recDetection&&recDetection.found);
 
     if(recCropFound){
