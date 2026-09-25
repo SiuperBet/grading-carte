@@ -236,7 +236,7 @@ function refreshRequirements(){
   const e=$('gradeRequirements');if(!e)return;
   const count=photoCount(),m=missingPhotos();
   const fc=getCenter('front'),bc=getCenter('back');
-  e.innerHTML=`<b>Materiale disponibile:</b> ${count}/11 foto · centratura fronte ${fc?'✓':'—'} · retro ${bc?'✓':'—'}<br>
+  e.innerHTML=`<b>Materiale disponibile:</b> ${count}/${SLOT_NAMES.length} foto · centratura fronte ${fc?'✓':'—'} · retro ${bc?'✓':'—'}<br>
   <span class="gradeDetail">${m.length?'Puoi già fare un’analisi parziale, ma il voto complessivo compare solo quando ci sono centratura fronte/retro, 4 angoli, 4 bordi e superficie fronte/retro.':'Set fotografico completo.'}</span>`;
 }
 window.CardGrade={open,close,run,refresh:refreshRequirements,getLast:()=>{try{return JSON.parse(localStorage.getItem(REPORT_KEY)||'null')}catch(e){return null}}};
