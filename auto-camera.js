@@ -144,22 +144,35 @@ async function live(video,step){
 }
 async function cropCanvas(source,game){
   try{
-    var CV=await loadCV(),d=await detect(source,game);
-    if(!d||d.confidence<.28)return {found:false,url:source.toDataURL('image/jpeg',.9)};
-    var src=CV.imread(source),srcTri=null,dstTri=null,M=null,dst=new CV.Mat(),out=document.createElement('canvas');
+    var sw=source.width||source.videoWidth||source.naturalWidth||1,sh=source.height||source.videoHeight||source.naturalHeight||1;
+    var safe=source,scale=1;
+    if(Math.max(sw,sh)>1400){
+      scale=1400/Math.max(sw,sh);
+      safe=document.createElement('canvas');
+      safe.width=Math.max(2,Math.round(sw*scale));safe.height=Math.max(2,Math.round(sh*scale));
+      safe.getContext('2d').drawImage(source,0,0,safe.width,safe.height);
+    }
+    var CV=await loadCV(),d=await detect(safe,game);
+    if(!d||d.confidence<.28)return {found:false,url:safe.toDataURL('image/jpeg',.88)};
+    var src=CV.imread(safe),srcTri=null,dstTri=null,M=null,dst=new CV.Mat(),out=document.createElement('canvas');
     try{
-      var ratio=gameRatio(game),H=1500,W=Math.round(H*ratio),p=d.points;
+      var ratio=gameRatio(game),H=1100,W=Math.round(H*ratio),p=d.points;
       srcTri=CV.matFromArray(4,1,CV.CV_32FC2,[p[0].x,p[0].y,p[1].x,p[1].y,p[2].x,p[2].y,p[3].x,p[3].y]);
       dstTri=CV.matFromArray(4,1,CV.CV_32FC2,[0,0,W-1,0,W-1,H-1,0,H-1]);
       M=CV.getPerspectiveTransform(srcTri,dstTri);
-      CV.warpPerspective(src,dst,M,new CV.Size(W,H),CV.INTER_CUBIC,CV.BORDER_REPLICATE,new CV.Scalar());
+      CV.warpPerspective(src,dst,M,new CV.Size(W,H),CV.INTER_LINEAR,CV.BORDER_REPLICATE,new CV.Scalar());
       out.width=W;out.height=H;CV.imshow(out,dst);
-      return {found:true,url:out.toDataURL('image/jpeg',.92),confidence:d.confidence,points:d.points};
+      return {found:true,url:out.toDataURL('image/jpeg',.9),confidence:d.confidence,points:d.points};
     }finally{
       src.delete();dst.delete();if(srcTri)srcTri.delete();if(dstTri)dstTri.delete();if(M)M.delete();
     }
   }catch(e){
-    return {found:false,url:source.toDataURL('image/jpeg',.9),error:e.message};
+    try{
+      var fallback=document.createElement('canvas'),fw=source.width||source.naturalWidth||1000,fh=source.height||source.naturalHeight||1400;
+      var fs=Math.min(1,1400/Math.max(fw,fh));fallback.width=Math.round(fw*fs);fallback.height=Math.round(fh*fs);
+      fallback.getContext('2d').drawImage(source,0,0,fallback.width,fallback.height);
+      return {found:false,url:fallback.toDataURL('image/jpeg',.88),error:e.message};
+    }catch(_){return {found:false,url:null,error:e.message}}
   }
 }
 async function cornersForCanvas(canvas,game){
