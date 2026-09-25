@@ -3,6 +3,7 @@
 
 var recResults=[];
 var recUrl=null;
+var recMatchedSetCode=null;
 var recBusy=false;
 var TESS_URL='https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js';
 
@@ -138,12 +139,28 @@ function ygoScore(c,titles,setCode,ocr){
 }
 async function findYgo(top,bottom){
   var all=top+'\n'+bottom,titles=titleCandidates(top),id=parseYgo(bottom,all),arr=[];
-  if(id.passcode){
+  recMatchedSetCode=id.setCode||null;
+
+  // Il codice stampa è la prova più forte: YGOPRODeck espone un endpoint esatto per setcode.
+  if(id.setCode){
+    try{
+      var si=await fjson('https://db.ygoprodeck.com/api/v7/cardsetsinfo.php?setcode='+encodeURIComponent(id.setCode));
+      var exact=Array.isArray(si)?si[0]:si;
+      if(exact&&exact.id){
+        var cj=await fjson('https://db.ygoprodeck.com/api/v7/cardinfo.php?id='+encodeURIComponent(exact.id));
+        arr=cj.data||[];
+      }
+    }catch(e){}
+  }
+  if(!arr.length&&id.passcode){
     try{var j=await fjson('https://db.ygoprodeck.com/api/v7/cardinfo.php?id='+encodeURIComponent(id.passcode));arr=j.data||[]}catch(e){}
   }
   if(!arr.length&&titles.length){
     for(var k=0;k<Math.min(3,titles.length)&&!arr.length;k++){
       try{var j2=await fjson('https://db.ygoprodeck.com/api/v7/cardinfo.php?fname='+encodeURIComponent(titles[k]));arr=j2.data||[]}catch(e){}
+      if(!arr.length){
+        try{var ji=await fjson('https://db.ygoprodeck.com/api/v7/cardinfo.php?fname='+encodeURIComponent(titles[k])+'&language=it');arr=ji.data||[]}catch(e){}
+      }
     }
   }
   arr=arr.map(function(c){return {card:c,score:ygoScore(c,titles,id.setCode,all)}})
@@ -162,9 +179,15 @@ function renderResults(game,data,top,bottom){
     recResults.map(function(c,i){
       var own=game==='poke'?ownedPoke(c):ownedYgo(c);
       var img=game==='poke'?(c.images&&c.images.small):(c.card_images&&c.card_images[0]&&c.card_images[0].image_url_small);
-      var meta=game==='poke'
-        ?((c.set&&c.set.name||'')+' · #'+(c.number||'')+(c.rarity?' · '+c.rarity:''))
-        :((c.card_sets&&c.card_sets[0])?c.card_sets[0].set_name+' · '+c.card_sets[0].set_code:c.type||'');
+      var meta;
+      if(game==='poke'){
+        meta=(c.set&&c.set.name||'')+' · #'+(c.number||'')+(c.rarity?' · '+c.rarity:'');
+      }else{
+        var matched=(c.card_sets||[]).find(function(s){return recMatchedSetCode&&String(s.set_code||'').toUpperCase()===recMatchedSetCode});
+        var ps=matched||(c.card_sets&&c.card_sets[0]);
+        meta=ps?ps.set_name+' · '+ps.set_code+(ps.set_rarity?' · '+ps.set_rarity:''):(c.type||'');
+        if(matched)meta='✓ STAMPA RICONOSCIUTA · '+meta;
+      }
       return '<button class="sec pr" data-rec="'+i+'" style="width:100%;'+(own?'outline:2px solid var(--ok)':'')+'">'+
         (img?'<img src="'+resc(img)+'" loading="lazy">':'')+
         '<span><b>'+resc(c.name)+'</b><br><small>'+resc(meta)+'</small>'+(own?'<br><small style="color:var(--ok);font-weight:800">✓ GIÀ NELL\'ALBUM</small>':'')+'</span></button>';
