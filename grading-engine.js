@@ -154,10 +154,10 @@ function gradeLabel(g){
 
 function missingPhotos(){
   const a=[];
-  for(let k=0;k<SLOT_NAMES.length;k++)if(!window.foto||!foto[k])a.push(k);
+  for(let k=0;k<SLOT_NAMES.length;k++)if(typeof foto==='undefined'||!foto[k])a.push(k);
   return a;
 }
-function photoCount(){return window.foto?foto.filter(Boolean).length:0}
+function photoCount(){return typeof foto!=='undefined'?foto.filter(Boolean).length:0}
 
 async function run(){
   const out=$('gradeResults'),status=$('gradeStatus');
@@ -166,7 +166,7 @@ async function run(){
   out.innerHTML='';
   const existing=[];
   for(let k=0;k<SLOT_NAMES.length;k++){
-    if(window.foto&&foto[k]){
+    if(typeof foto!=='undefined'&&foto[k]){
       status.textContent='Analizzo '+SLOT_NAMES[k]+'…';
       try{existing.push(await analyzePhoto(foto[k],k))}catch(e){}
       await nextFrame();
