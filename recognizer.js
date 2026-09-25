@@ -596,297 +596,113 @@ function quickCardDetect(source,game){
   var sw=source.width,sh=source.height;
   if(!sw||!sh)return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  var max=360,sc=Math.min(1,max/Math.max(sw,sh));
+  // Ricerca un rettangolo carta completo, non quattro linee indipendenti.
+  // Lavora su una miniatura per restare fluido su smartphone.
+  var max=320,sc=Math.min(1,max/Math.max(sw,sh));
   var w=Math.max(100,Math.round(sw*sc)),h=Math.max(100,Math.round(sh*sc));
   var cv=document.createElement('canvas');cv.width=w;cv.height=h;
   var ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,w,h);
-  var rgba=ctx.getImageData(0,0,w,h).data;
-  var gray=new Float32Array(w*h),mag=new Float32Array(w*h),ang=new Float32Array(w*h);
+  var rgba=ctx.getImageData(0,0,w,h).data,gray=new Float32Array(w*h),mag=new Float32Array(w*h);
   for(var i=0,p=0;i<gray.length;i++,p+=4)gray[i]=.299*rgba[p]+.587*rgba[p+1]+.114*rgba[p+2];
-
-  var hist=new Uint32Array(256),count=0;
   for(var y=1;y<h-1;y++)for(var x=1;x<w-1;x++){
     var z=y*w+x;
     var gx=-gray[z-w-1]-2*gray[z-1]-gray[z+w-1]+gray[z-w+1]+2*gray[z+1]+gray[z+w+1];
     var gy=-gray[z-w-1]-2*gray[z-w]-gray[z-w+1]+gray[z+w-1]+2*gray[z+w]+gray[z+w+1];
-    var m=Math.hypot(gx,gy);mag[z]=m;
-    var a=Math.atan2(gy,gx)*180/Math.PI;if(a<0)a+=180;ang[z]=a;
-    hist[Math.max(0,Math.min(255,Math.round(m/4)))]++;count++;
-  }
-  var target=Math.round(count*.82),acc=0,bin=0;
-  for(;bin<256;bin++){acc+=hist[bin];if(acc>=target)break}
-  var edgeThr=Math.max(22,bin*4);
-
-  function normTheta(t){while(t<0)t+=180;while(t>=180)t-=180;return t}
-  function angleDiff(a,b){var d=Math.abs(normTheta(a)-normTheta(b));return Math.min(d,180-d)}
-  var diag=Math.ceil(Math.hypot(w,h)),rhoN=diag*2+1;
-  function thetaList(from,to,step){var a=[];for(var t=from;t<=to;t+=step)a.push(t);return a}
-  function buildHough(thetas){
-    var A=Array.from({length:thetas.length},function(){return new Float32Array(rhoN)});
-    var trig=thetas.map(function(t){var r=t*Math.PI/180;return {c:Math.cos(r),s:Math.sin(r)}});
-    for(var y=1;y<h-1;y+=2)for(var x=1;x<w-1;x+=2){
-      var idx=y*w+x,m=mag[idx];if(m<edgeThr)continue;
-      var ga=ang[idx];
-      for(var ti=0;ti<thetas.length;ti++){
-        var nt=normTheta(thetas[ti]);if(angleDiff(ga,nt)>11)continue;
-        var rho=Math.round(x*trig[ti].c+y*trig[ti].s)+diag;
-        if(rho>=0&&rho<rhoN)A[ti][rho]+=Math.min(700,m);
-      }
-    }
-    return {A:A,trig:trig,thetas:thetas};
-  }
-  function peaks(H,count){
-    var arr=[];
-    for(var ti=0;ti<H.thetas.length;ti++){
-      var row=H.A[ti];
-      for(var r=2;r<rhoN-2;r++){
-        var v=row[r];if(v<=0)continue;
-        if(v>=row[r-1]&&v>=row[r+1]&&v>=row[r-2]&&v>=row[r+2])
-          arr.push({theta:H.thetas[ti],rho:r-diag,score:v,c:H.trig[ti].c,s:H.trig[ti].s});
-      }
-    }
-    arr.sort(function(a,b){return b.score-a.score});
-    var out=[];
-    for(var i=0;i<arr.length&&out.length<count;i++){
-      var p=arr[i];
-      if(out.every(function(q){return Math.abs(p.rho-q.rho)>7||angleDiff(p.theta,q.theta)>4}))out.push(p);
-    }
-    return out;
-  }
-
-  var vp=peaks(buildHough(thetaList(-25,25,2)),16);
-  var hp=peaks(buildHough(thetaList(65,115,2)),16);
-  if(vp.length<2||hp.length<2)return {found:false,points:null,confidence:0,width:sw,height:sh};
-
-  function inter(a,b){
-    var det=a.c*b.s-b.c*a.s;if(Math.abs(det)<1e-6)return null;
-    return {x:(a.rho*b.s-b.rho*a.s)/det,y:(a.c*b.rho-b.c*a.rho)/det};
-  }
-  function lineXAt(l,y){return Math.abs(l.c)<1e-6?1e9:(l.rho-y*l.s)/l.c}
-  function lineYAt(l,x){return Math.abs(l.s)<1e-6?1e9:(l.rho-x*l.c)/l.s}
-  function inside(p,m){return p&&p.x>=-m&&p.x<=w+m&&p.y>=-m&&p.y<=h+m}
-  function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
-  function convex(q){
-    var s=0;
-    for(var i=0;i<4;i++){
-      var a=q[i],b=q[(i+1)%4],d=q[(i+2)%4];
-      var zz=(b.x-a.x)*(d.y-b.y)-(b.y-a.y)*(d.x-b.x);
-      if(Math.abs(zz)<1e-4)continue;
-      if(!s)s=Math.sign(zz);else if(Math.sign(zz)!==s)return false;
-    }
-    return true;
+    mag[z]=Math.hypot(gx,gy);
   }
   function rgbAt(x,y){
     x=Math.max(0,Math.min(w-1,Math.round(x)));y=Math.max(0,Math.min(h-1,Math.round(y)));
     var p=(y*w+x)*4;return [rgba[p],rgba[p+1],rgba[p+2]];
   }
-  function colorDist(a,b){
-    var dr=a[0]-b[0],dg=a[1]-b[1],db=a[2]-b[2];
-    return Math.sqrt(dr*dr+dg*dg+db*db);
+  function cd(a,b){var r=a[0]-b[0],g=a[1]-b[1],bb=a[2]-b[2];return Math.sqrt(r*r+g*g+bb*bb)}
+  function corners(cx,cy,H,deg){
+    var ratio=game==='ygo'?59/86:63/88,W=H*ratio,t=deg*Math.PI/180;
+    var ux={x:Math.cos(t),y:Math.sin(t)},uy={x:-Math.sin(t),y:Math.cos(t)};
+    return [
+      {x:cx-ux.x*W/2-uy.x*H/2,y:cy-ux.y*W/2-uy.y*H/2},
+      {x:cx+ux.x*W/2-uy.x*H/2,y:cy+ux.y*W/2-uy.y*H/2},
+      {x:cx+ux.x*W/2+uy.x*H/2,y:cy+ux.y*W/2+uy.y*H/2},
+      {x:cx-ux.x*W/2+uy.x*H/2,y:cy-ux.y*W/2+uy.y*H/2}
+    ];
   }
-  function sideStats(a,b,cx,cy){
-    var dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len;
+  function sideStat(a,b,cx,cy){
+    var dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1,tx=dx/len,ty=dy/len,nx=-ty,ny=tx;
     var mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
-    if(Math.hypot(mx+nx*5-cx,my+ny*5-cy)>Math.hypot(mx-nx*5-cx,my-ny*5-cy)){nx=-nx;ny=-ny}
-    var strong=0,edgeSum=0,contrastSum=0,innerColors=[],outerColors=[],innerTex=0,outerTex=0,n=28;
-    var off=Math.max(3,Math.min(7,len*.022));
+    if(Math.hypot(mx+nx*5-cx,my+ny*5-cy)<Math.hypot(mx-nx*5-cx,my-ny*5-cy)){nx=-nx;ny=-ny}
+    var edge=0,strong=0,contrast=0,inTex=0,outTex=0,n=14,off=Math.max(3,Math.min(6,len*.02));
     for(var k=0;k<n;k++){
-      var t=.045+.91*k/(n-1),x=a.x+dx*t,y=a.y+dy*t,best=0;
+      var t=.06+.88*k/(n-1),px=a.x+dx*t,py=a.y+dy*t,best=0;
       for(var o=-2;o<=2;o++){
-        var xx=Math.round(x+(-dy/len)*o),yy=Math.round(y+(dx/len)*o);
+        var xx=Math.round(px+nx*o),yy=Math.round(py+ny*o);
         if(xx<1||xx>=w-1||yy<1||yy>=h-1)continue;
         best=Math.max(best,mag[yy*w+xx]);
       }
-      edgeSum+=best;if(best>=edgeThr*.70)strong++;
-
-      var ix=Math.round(x+nx*off),iy=Math.round(y+ny*off);
-      var ox=Math.round(x-nx*off),oy=Math.round(y-ny*off);
-      ix=Math.max(1,Math.min(w-2,ix));iy=Math.max(1,Math.min(h-2,iy));
-      ox=Math.max(1,Math.min(w-2,ox));oy=Math.max(1,Math.min(h-2,oy));
-
-      var ci=rgbAt(ix,iy),co=rgbAt(ox,oy);
-      contrastSum+=colorDist(ci,co);innerColors.push(ci);outerColors.push(co);
-      innerTex+=mag[iy*w+ix];outerTex+=mag[oy*w+ox];
-    }
-    var mean=[0,0,0],outerMean=[0,0,0];
-    innerColors.forEach(function(v){mean[0]+=v[0];mean[1]+=v[1];mean[2]+=v[2]});
-    outerColors.forEach(function(v){outerMean[0]+=v[0];outerMean[1]+=v[1];outerMean[2]+=v[2]});
-    mean=mean.map(function(v){return v/innerColors.length});
-    outerMean=outerMean.map(function(v){return v/outerColors.length});
-    var dev=0,outDev=0;
-    innerColors.forEach(function(v){dev+=colorDist(v,mean)});dev/=innerColors.length;
-    outerColors.forEach(function(v){outDev+=colorDist(v,outerMean)});outDev/=outerColors.length;
-    innerTex/=n;outerTex/=n;
-    var textureDelta=outerTex-innerTex;
-    return {
-      edge:edgeSum/n,strong:strong/n,contrast:contrastSum/n,
-      innerDev:dev,outerDev:outDev,innerTex:innerTex,outerTex:outerTex,
-      textureDelta:textureDelta,mean:mean,outerMean:outerMean
-    };
-  }
-
-  var ratio=game==='ygo'?59/86:63/88,best=null,midY=h/2,midX=w/2;
-  for(var i=0;i<vp.length;i++)for(var j=i+1;j<vp.length;j++){
-    var va=vp[i],vb=vp[j],xa=lineXAt(va,midY),xb=lineXAt(vb,midY);
-    var L=xa<xb?va:vb,R=xa<xb?vb:va,sepX=lineXAt(R,midY)-lineXAt(L,midY);
-    if(sepX<w*.15||sepX>w*.94)continue;
-
-    for(var u=0;u<hp.length;u++)for(var v=u+1;v<hp.length;v++){
-      var ha=hp[u],hb=hp[v],ya=lineYAt(ha,midX),yb=lineYAt(hb,midX);
-      var T=ya<yb?ha:hb,B=ya<yb?hb:ha,sepY=lineYAt(B,midX)-lineYAt(T,midX);
-      if(sepY<h*.20||sepY>h*.97)continue;
-
-      var q=[inter(L,T),inter(R,T),inter(R,B),inter(L,B)];
-      if(q.some(function(p){return !inside(p,5)}))continue;
-      if(!convex(q))continue;
-
-      var tw=dist(q[0],q[1]),bw=dist(q[3],q[2]),lh=dist(q[0],q[3]),rh=dist(q[1],q[2]);
-      var mw=(tw+bw)/2,mh=(lh+rh)/2,rr=mw/Math.max(1,mh);
-      var re=Math.abs(rr-ratio)/ratio;if(re>.135)continue;
-      var oppW=Math.min(tw,bw)/Math.max(tw,bw),oppH=Math.min(lh,rh)/Math.max(lh,rh);
-      if(oppW<.80||oppH<.80)continue;
-      var area=polyArea(q)/(w*h);if(area<.04||area>.88)continue;
-
-      var cx=(q[0].x+q[1].x+q[2].x+q[3].x)/4,cy=(q[0].y+q[1].y+q[2].y+q[3].y)/4;
-      var s0=sideStats(q[0],q[1],cx,cy),s1=sideStats(q[1],q[2],cx,cy),s2=sideStats(q[2],q[3],cx,cy),s3=sideStats(q[3],q[0],cx,cy);
-      var ss=[s0,s1,s2,s3],minStrong=Math.min.apply(null,ss.map(function(s){return s.strong}));
-      if(minStrong<.44)continue;
-
-      var support=ss.reduce(function(a,s){return a+s.strong},0)/4;
-      var edgeNorm=Math.min(1,ss.reduce(function(a,s){return a+s.edge},0)/(4*edgeThr*2.2));
-      var contrast=Math.min(1,ss.reduce(function(a,s){return a+s.contrast},0)/(4*75));
-      var uniformity=Math.max(0,1-Math.min(1,ss.reduce(function(a,s){return a+s.innerDev},0)/(4*82)));
-      var areaPref=Math.min(1,area/.62);
-      var ratioFit=Math.max(0,1-re/.135);
-
-      // La cornice fisica, a pochi pixel dal bordo, tende ad avere un aspetto coerente sui quattro lati.
-      // Questo elimina i quadrilateri "ibridi" (es. lato alto nero interno + lati esterni gialli).
-      var frameMean=[0,0,0];
-      ss.forEach(function(s){frameMean[0]+=s.mean[0];frameMean[1]+=s.mean[1];frameMean[2]+=s.mean[2]});
-      frameMean=frameMean.map(function(v){return v/4});
-      var frameDev=ss.reduce(function(a,s){return a+colorDist(s.mean,frameMean)},0)/4;
-      var frameConsistency=Math.max(0,1-Math.min(1,frameDev/92));
-
-      // Bordo fisico: appena fuori deve cambiare davvero materiale/sfondo.
-      // Una cornice stampata interna spesso ha PIÙ texture dentro (illustrazione/testo) che fuori.
-      var textureDeltas=ss.map(function(s){return s.textureDelta});
-      var avgTextureDelta=textureDeltas.reduce(function(a,v){return a+v},0)/4;
-      var minTextureDelta=Math.min.apply(null,textureDeltas);
-      var physicality=Math.max(0,Math.min(1,(avgTextureDelta+18)/58));
-      var badInnerPrinted=minTextureDelta<-24;
-
-      // Anche l'esterno dovrebbe essere meno coerente col colore della cornice interna.
-      var outsideContrast=ss.reduce(function(a,s){return a+colorDist(s.mean,s.outerMean)},0)/(4*105);
-      outsideContrast=Math.max(0,Math.min(1,outsideContrast));
-
-      var score=.24*areaPref+.16*support+.08*edgeNorm+.13*contrast+.06*uniformity+
-                .15*frameConsistency+.12*physicality+.04*outsideContrast+.02*ratioFit;
-
-      if(frameConsistency<.30)score*=.58;
-      if(badInnerPrinted)score*=.42;
-
-      if(!best||score>best.score+.014||(Math.abs(score-best.score)<=.014&&area>best.area)){
-        best={
-          q:q,score:score,re:re,area:area,support:support,minStrong:minStrong,
-          contrast:contrast,uniformity:uniformity,frameConsistency:frameConsistency,
-          physicality:physicality,minTextureDelta:minTextureDelta,
-          avgTextureDelta:avgTextureDelta,oppW:oppW,oppH:oppH
-        };
+      edge+=best;if(best>=55)strong++;
+      var ix=Math.round(px-nx*off),iy=Math.round(py-ny*off);
+      var ox=Math.round(px+nx*off),oy=Math.round(py+ny*off);
+      if(ix>=1&&ix<w-1&&iy>=1&&iy<h-1&&ox>=1&&ox<w-1&&oy>=1&&oy<h-1){
+        contrast+=cd(rgbAt(ix,iy),rgbAt(ox,oy));
+        inTex+=mag[iy*w+ix];outTex+=mag[oy*w+ox];
       }
     }
+    return {edge:edge/n,strong:strong/n,contrast:contrast/n,texDelta:(outTex-inTex)/n};
   }
-
-  if(!best)return {found:false,points:null,confidence:0,width:sw,height:sh};
-
-  // Secondo passaggio: da ogni lato candidato cerca il bordo continuo più ESTERNO.
-  // Serve a evitare che una cornice stampata interna vinca sul bordo fisico della carta.
-  function lineFromPts(a,b){
-    var A=b.y-a.y,B=a.x-b.x,n=Math.hypot(A,B)||1;
-    A/=n;B/=n;return {A:A,B:B,C:-(A*a.x+B*a.y)};
+  function evalRect(q,cx,cy){
+    if(q.some(function(p){return p.x<2||p.x>w-3||p.y<2||p.y>h-3}))return null;
+    var ss=[0,1,2,3].map(function(i){return sideStat(q[i],q[(i+1)%4],cx,cy)});
+    var minStrong=Math.min.apply(null,ss.map(function(s){return s.strong}));
+    if(minStrong<.34)return null;
+    var edge=ss.reduce(function(a,s){return a+s.edge},0)/4;
+    var contrast=ss.reduce(function(a,s){return a+s.contrast},0)/4;
+    var tex=ss.reduce(function(a,s){return a+s.texDelta},0)/4;
+    var minTex=Math.min.apply(null,ss.map(function(s){return s.texDelta}));
+    var area=polyArea(q)/(w*h);
+    var physical=Math.max(0,Math.min(1,(tex+8)/46));
+    var score=.29*minStrong+.20*Math.min(1,edge/150)+.16*Math.min(1,contrast/95)+
+              .25*physical+.10*Math.min(1,area/.60);
+    if(minTex<-18)score*=.70;
+    var margin=Math.min.apply(null,q.map(function(p){return Math.min(p.x,w-p.x,p.y,h-p.y)}))/Math.min(w,h);
+    if(margin<.008)score*=.76;
+    return {score:score,area:area,minStrong:minStrong,physical:physical,contrast:contrast,edge:edge};
   }
-  function lineInter(a,b){
-    var det=a.A*b.B-b.A*a.B;if(Math.abs(det)<1e-6)return null;
-    return {x:(a.B*b.C-b.B*a.C)/det,y:(b.A*a.C-a.A*b.C)/det};
-  }
-  function shiftedSide(a,b,cx,cy,off){
-    var ln=lineFromPts(a,b),v=ln.A*cx+ln.B*cy+ln.C,sg=v>=0?1:-1;
-    var nx=-sg*ln.A,ny=-sg*ln.B;
-    var aa={x:a.x+nx*off,y:a.y+ny*off},bb={x:b.x+nx*off,y:b.y+ny*off};
-    return {a:aa,b:bb,line:lineFromPts(aa,bb)};
-  }
-  function refineSide(a,b,cx,cy,maxOff){
-    var rows=[],bestScore=0;
-    for(var off=0;off<=maxOff;off+=1){
-      var sh=shiftedSide(a,b,cx,cy,off);
-      if(!inside(sh.a,1)||!inside(sh.b,1))break;
-      var st=sideStats(sh.a,sh.b,cx,cy);
-      var edgeN=Math.min(1,st.edge/Math.max(1,edgeThr*1.9));
-      var conN=Math.min(1,st.contrast/70);
-      var score=.50*st.strong+.24*edgeN+.26*conN;
-      rows.push({off:off,score:score,st:st,sh:sh});
-      if(score>bestScore)bestScore=score;
-    }
-    var viable=rows.filter(function(r){
-      return r.st.strong>=.38&&r.st.contrast>=12&&r.st.edge>=edgeThr*.42&&r.score>=bestScore*.58;
-    });
-    if(!viable.length)return rows[0]||null;
-
-    // Premia il passaggio carta -> sfondo. Non scegliere più semplicemente il bordo più esterno:
-    // sul tessuto potrebbe esserci una trama forte.
-    viable.forEach(function(r){
-      var phys=Math.max(0,Math.min(1,(r.st.textureDelta+18)/58));
-      var outContrast=Math.max(0,Math.min(1,colorDist(r.st.mean,r.st.outerMean)/105));
-      r.physicalScore=.40*r.st.strong+.22*Math.min(1,r.st.edge/(edgeThr*1.9))+
-                      .20*Math.min(1,r.st.contrast/70)+.13*phys+.05*outContrast;
-      if(r.st.textureDelta<-24)r.physicalScore*=.45;
-    });
-    viable.sort(function(a,b){
-      if(Math.abs(b.physicalScore-a.physicalScore)>.035)return b.physicalScore-a.physicalScore;
-      return b.off-a.off;
-    });
-    return viable[0];
-  }
-
-  var cq=best.q,cx=(cq[0].x+cq[1].x+cq[2].x+cq[3].x)/4,cy=(cq[0].y+cq[1].y+cq[2].y+cq[3].y)/4;
-  var maxOff=Math.max(5,Math.round(Math.min(w,h)*.105));
-  var refs=[
-    refineSide(cq[0],cq[1],cx,cy,maxOff),
-    refineSide(cq[1],cq[2],cx,cy,maxOff),
-    refineSide(cq[2],cq[3],cx,cy,maxOff),
-    refineSide(cq[3],cq[0],cx,cy,maxOff)
-  ];
-
-  var outerVerified=false,refined=cq;
-  if(refs.every(Boolean)){
-    var q2=[
-      lineInter(refs[3].sh.line,refs[0].sh.line),
-      lineInter(refs[0].sh.line,refs[1].sh.line),
-      lineInter(refs[1].sh.line,refs[2].sh.line),
-      lineInter(refs[2].sh.line,refs[3].sh.line)
-    ];
-    if(q2.every(function(p){return inside(p,3)})&&convex(q2)){
-      var tw2=dist(q2[0],q2[1]),bw2=dist(q2[3],q2[2]),lh2=dist(q2[0],q2[3]),rh2=dist(q2[1],q2[2]);
-      var rr2=((tw2+bw2)/2)/Math.max(1,(lh2+rh2)/2);
-      var re2=Math.abs(rr2-ratio)/ratio;
-      var ar2=polyArea(q2)/(w*h);
-      var ow2=Math.min(tw2,bw2)/Math.max(tw2,bw2),oh2=Math.min(lh2,rh2)/Math.max(lh2,rh2);
-      var avgStrong=refs.reduce(function(s,r){return s+r.st.strong},0)/4;
-      var avgContrast=refs.reduce(function(s,r){return s+r.st.contrast},0)/4;
-      var avgTexDelta=refs.reduce(function(s,r){return s+r.st.textureDelta},0)/4;
-      var minTexDelta=Math.min.apply(null,refs.map(function(r){return r.st.textureDelta}));
-      if(re2<=.14&&ar2>=best.area*.94&&ar2<=.90&&ow2>=.78&&oh2>=.78&&
-         avgStrong>=.40&&avgContrast>=14&&avgTexDelta>=-5&&minTexDelta>=-26){
-        refined=q2;best.area=ar2;best.re=re2;
-        outerVerified=true;
+  function search(params){
+    var best=null;
+    for(var hi=0;hi<params.hs.length;hi++){
+      var H=params.hs[hi],W=H*(game==='ygo'?59/86:63/88);if(W>w*.96)continue;
+      for(var ti=0;ti<params.angles.length;ti++){
+        var deg=params.angles[ti];
+        for(var xi=0;xi<params.cxs.length;xi++)for(var yi=0;yi<params.cys.length;yi++){
+          var cx=params.cxs[xi],cy=params.cys[yi],q=corners(cx,cy,H,deg),ev=evalRect(q,cx,cy);
+          if(ev&&(!best||ev.score>best.ev.score))best={q:q,cx:cx,cy:cy,H:H,deg:deg,ev:ev};
+        }
       }
     }
+    return best;
   }
+  function lin(a,b,n){var out=[];if(n<=1)return[a];for(var i=0;i<n;i++)out.push(a+(b-a)*i/(n-1));return out}
 
-  var conf=.21*Math.min(1,best.area/.62)+.19*best.support+.11*best.contrast+.07*best.uniformity+
-           .13*(best.frameConsistency||0)+.12*(best.physicality||0)+
-           .09*Math.max(0,1-best.re/.135)+(outerVerified?.08:0);
-  var full=refined.map(function(p){return {x:p.x/sc,y:p.y/sc}});
-  return {found:true,points:full,confidence:Math.max(0,Math.min(1,conf)),outerVerified:outerVerified,width:sw,height:sh};
+  var coarse=search({
+    hs:lin(h*.48,h*.91,10),
+    angles:lin(-8,8,9),
+    cxs:lin(w*.28,w*.72,7),
+    cys:lin(h*.28,h*.72,7)
+  });
+  if(!coarse)return {found:false,points:null,confidence:0,width:sw,height:sh};
+
+  var fine=search({
+    hs:lin(coarse.H*.94,coarse.H*1.06,5),
+    angles:lin(coarse.deg-2,coarse.deg+2,5),
+    cxs:lin(coarse.cx-w*.035,coarse.cx+w*.035,5),
+    cys:lin(coarse.cy-h*.035,coarse.cy+h*.035,5)
+  })||coarse;
+
+  var conf=Math.max(0,Math.min(1,(fine.ev.score-.42)/.42));
+  var full=fine.q.map(function(p){return {x:p.x/sc,y:p.y/sc}});
+  var verified=conf>=.72&&fine.ev.minStrong>=.58&&fine.ev.physical>=.52;
+  return {
+    found:true,points:full,width:sw,height:sh,confidence:conf,
+    outerVerified:verified,consensus:false,rectSearch:true
+  };
 }
 function detectedCropCanvas(source,det,padFactor){
   if(!det||!det.found||!det.points)return source;
@@ -1013,18 +829,17 @@ async function prepareImportedPhoto(file,source){
     await yieldPaint();
     var game=rq('rgame').value==='ygo'?'ygo':'poke';
     var customDet=quickCardDetect(recOriginalCanvas,game);
-    if(customDet&&customDet.found&&(customDet.confidence||0)>=.52){
-      // Sul telefono questo è SOLO un suggerimento visivo.
-      // Non viene dichiarato verificato e non viene usato per ritagliare OCR/centratura.
+    if(customDet&&customDet.found&&(customDet.confidence||0)>=.38){
       recDetection={
         found:true,points:customDet.points,width:recOriginalCanvas.width,height:recOriginalCanvas.height,
-        confidence:Math.min(.67,customDet.confidence||.52),outerVerified:false,consensus:false
+        confidence:customDet.confidence||.38,outerVerified:!!customDet.outerVerified,consensus:false
       };
       recCropFound=true;
-      recOcrUrl=recUrl;
+      // Per OCR basta un riquadro approssimativo: aggiungiamo molto margine e non tocchiamo mai la foto originale.
+      recOcrUrl=detectedCropCanvas(recOriginalCanvas,recDetection,.085).toDataURL('image/jpeg',.9);
       drawRecognizerDetection();
       rq('rDetectLegend').classList.remove('hide');
-      setStatus('✓ Foto pronta. Il contorno mostrato è solo una proposta: riconoscimento e centratura useranno la foto completa finché il perimetro non viene confermato.');
+      setStatus((recDetection.outerVerified?'✓ Carta individuata':'⚠ Contorno approssimativo')+'. Foto pronta: OCR e centratura lavorano su copie separate e la foto originale resta intatta.');
     }else{
       recDetection=null;recCropFound=false;recOcrUrl=recUrl;
       var ov=rq('rDetectOverlay');if(ov){var oc=ov.getContext('2d');oc.clearRect(0,0,ov.width,ov.height)}
@@ -1058,7 +873,7 @@ window.usaFotoImportataPerCentratura=function(){
     // La foto importata non deve avviare OpenCV automaticamente.
     window.__galleryCenterOnce=true;
     window.__galleryCropFound=recCropFound;
-    window.__galleryDetectedCorners=recDetection&&recDetection.found&&recDetection.outerVerified
+    window.__galleryDetectedCorners=recDetection&&recDetection.found&&(recDetection.outerVerified||(recDetection.confidence||0)>=.58)
       ?recDetection.points.map(function(p){return {x:p.x/recDetection.width,y:p.y/recDetection.height}})
       :null;
     var g=document.getElementById('gioco');
