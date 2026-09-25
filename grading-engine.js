@@ -5,9 +5,9 @@ const SLOT_NAMES=[
   'Fronte','Retro',
   'Angolo alto-sinistra','Angolo alto-destra','Angolo basso-sinistra','Angolo basso-destra',
   'Bordo alto','Bordo basso','Bordo sinistro','Bordo destro',
-  'Luce inclinata / superficie'
+  'Luce inclinata / superficie fronte','Luce inclinata / superficie retro'
 ];
-const SLOT_GROUP={front:[0],back:[1],corners:[2,3,4,5],edges:[6,7,8,9],surface:[10]};
+const SLOT_GROUP={front:[0],back:[1],corners:[2,3,4,5],edges:[6,7,8,9],surface:[10,11]};
 const CENTER_KEY='cardlab.grading.center.';
 const REPORT_KEY='cardlab.grading.report.v1';
 
@@ -89,7 +89,7 @@ async function analyzePhoto(url,index){
   const orientCoherence=strong?Math.max(...orient)/strong:0;
   const qualityBrightness=clamp(1-Math.abs(lum-135)/115,0,1);
   const qualitySharp=clamp((Math.log10(sharp+1)-1.35)/1.15,0,1);
-  const glareLimit=index===10?.15:.035;
+  const glareLimit=(index===10||index===11)?.15:.035;
   const qualityGlare=clamp(1-(glare/N)/glareLimit,0,1);
   const quality=100*(.30*qualityBrightness+.50*qualitySharp+.20*qualityGlare);
   return{
@@ -118,16 +118,20 @@ function relativeScores(list,type){
   return {scores,grade:roundHalf(avg(scores)),min:Math.min(...scores)};
 }
 
-function surfaceScore(x,front,back){
+function oneSurfaceScore(x){
   if(!x)return null;
   const lineSignal=clamp((x.edgeDensity*.75+x.orientCoherence*.25-.10)/.28,0,1);
   const texture=clamp((Math.sqrt(x.gradVar)-16)/52,0,1);
   const photoPenalty=clamp((62-x.quality)/62,0,.45);
-  let defect=.55*lineSignal+.45*texture;
-  // Non penalizzare i riflessi della foto inclinata: servono a evidenziare difetti.
-  let score=9.6-defect*3.0-photoPenalty*.8;
-  if(front&&front.quality<45)score-=.3;
-  if(back&&back.quality<45)score-=.3;
+  const defect=.55*lineSignal+.45*texture;
+  return clamp(roundHalf(9.6-defect*3.0-photoPenalty*.8),4,10);
+}
+function surfaceScore(frontTilt,backTilt,front,back){
+  const a=oneSurfaceScore(frontTilt),b=oneSurfaceScore(backTilt);
+  if(a==null||b==null)return null;
+  let score=roundHalf((a+b)/2);
+  if(front&&front.quality<45)score-=.25;
+  if(back&&back.quality<45)score-=.25;
   return clamp(roundHalf(score),4,10);
 }
 
@@ -174,17 +178,11 @@ async function run(){
   }
   const by={};existing.forEach(x=>by[x.index]=x);
   const frontC=getCenter('front'),backC=getCenter('back');
-  let cent=null;
-  if(frontC){
-    cent=centerSubgrade(frontC);
-    if(backC){
-      const b=centerSubgrade(backC);
-      cent=roundHalf(.75*cent+.25*b);
-    }
-  }
+  let cent=null,frontCentGrade=frontC?centerSubgrade(frontC):null,backCentGrade=backC?centerSubgrade(backC):null;
+  if(frontC&&backC)cent=roundHalf(.75*frontCentGrade+.25*backCentGrade);
   const corners=relativeScores(SLOT_GROUP.corners.map(k=>by[k]).filter(Boolean),'corner');
   const edges=relativeScores(SLOT_GROUP.edges.map(k=>by[k]).filter(Boolean),'edge');
-  const surface=surfaceScore(by[10],by[0],by[1]);
+  const surface=surfaceScore(by[10],by[11],by[0],by[1]);
   const parts={
     centering:cent,
     corners:corners&&corners.scores.length===4?corners.grade:null,
@@ -210,13 +208,13 @@ async function run(){
   if(grade!=null){
     html+=`<div class="gradeBig">${fmt(grade,1)}<span>/10</span></div><div><b>${gradeLabel(grade)}</b><br><span>Confidenza analisi: ${confidence}%</span></div>`;
   }else{
-    html+=`<div class="gradeBig">—</div><div><b>Stima complessiva non ancora affidabile</b><br><span>${photoCount()}/11 foto · confidenza dati ${confidence}%</span></div>`;
+    html+=`<div class="gradeBig">—</div><div><b>Stima complessiva non ancora affidabile</b><br><span>${photoCount()}/${SLOT_NAMES.length} foto · confidenza dati ${confidence}%</span></div>`;
   }
   html+='</div>';
   html+=card('Centratura',parts.centering,centerDetail);
   html+=card('Angoli',parts.corners,corners?`${corners.scores.length}/4 foto analizzate`:'Servono le 4 foto degli angoli');
   html+=card('Bordi',parts.edges,edges?`${edges.scores.length}/4 foto analizzate`:'Servono le 4 foto dei bordi');
-  html+=card('Superficie',parts.surface,by[10]?'Foto a luce inclinata analizzata':'Serve la foto a luce inclinata');
+  html+=card('Superficie',parts.surface,(by[10]&&by[11])?'Fronte e retro a luce inclinata analizzati':'Servono entrambe le foto a luce inclinata');
   if(miss.length){
     html+=`<div class="gradeMissing"><b>Per completare il pre-grading mancano ${miss.length} foto:</b><br>${miss.map(k=>SLOT_NAMES[k]).join(' · ')}</div>`;
   }
@@ -239,7 +237,7 @@ function refreshRequirements(){
   const count=photoCount(),m=missingPhotos();
   const fc=getCenter('front'),bc=getCenter('back');
   e.innerHTML=`<b>Materiale disponibile:</b> ${count}/11 foto · centratura fronte ${fc?'✓':'—'} · retro ${bc?'✓':'—'}<br>
-  <span class="gradeDetail">${m.length?'Puoi già fare un’analisi parziale, ma il voto complessivo compare solo quando ci sono centratura, 4 angoli, 4 bordi e superficie.':'Set fotografico completo.'}</span>`;
+  <span class="gradeDetail">${m.length?'Puoi già fare un’analisi parziale, ma il voto complessivo compare solo quando ci sono centratura fronte/retro, 4 angoli, 4 bordi e superficie fronte/retro.':'Set fotografico completo.'}</span>`;
 }
 window.CardGrade={open,close,run,refresh:refreshRequirements,getLast:()=>{try{return JSON.parse(localStorage.getItem(REPORT_KEY)||'null')}catch(e){return null}}};
 window.apriGrading=open;
