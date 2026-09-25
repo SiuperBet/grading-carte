@@ -9,7 +9,7 @@ self.addEventListener('fetch',e=>{
     const hit=await c.match(e.request);
     if(hit)return hit;
     const r=await fetch(e.request);
-    if(r&&r.ok)c.put(e.request,r.clone());
+    if(r&&(r.ok||r.type==='opaque'))c.put(e.request,r.clone());
     return r;
   }));
 });
