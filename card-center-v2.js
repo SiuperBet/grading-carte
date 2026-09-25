@@ -199,9 +199,17 @@ function drawGuideRay(ctx,from,to,sx,sy,S,lw,lh){
 function drawLensA(p){
   if(!p)return;
   const l=el('cc2lensA'),x=l.getContext('2d'),S=lensCropSize();
-  const sx=clamp(p.x-S/2,0,Math.max(0,state.source.width-S)),sy=clamp(p.y-S/2,0,Math.max(0,state.source.height-S));
-  x.clearRect(0,0,l.width,l.height);
-  x.drawImage(state.source,sx,sy,S,S,0,0,l.width,l.height);
+  // Il punto deve restare SEMPRE al centro. Non spostiamo la finestra ai bordi:
+  // disegniamo invece eventuale spazio vuoto fuori dalla foto.
+  const sx=p.x-S/2,sy=p.y-S/2;
+  const srcX=Math.max(0,sx),srcY=Math.max(0,sy);
+  const srcR=Math.min(state.source.width,sx+S),srcB=Math.min(state.source.height,sy+S);
+  const srcW=Math.max(0,srcR-srcX),srcH=Math.max(0,srcB-srcY);
+  const dstX=(srcX-sx)/S*l.width,dstY=(srcY-sy)/S*l.height;
+  const dstW=srcW/S*l.width,dstH=srcH/S*l.height;
+
+  x.fillStyle='#07090c';x.fillRect(0,0,l.width,l.height);
+  if(srcW>0&&srcH>0)x.drawImage(state.source,srcX,srcY,srcW,srcH,dstX,dstY,dstW,dstH);
 
   // Guide nella direzione dei due lati adiacenti: aiutano sugli angoli arrotondati.
   const prev=(state.selected+3)%4,next=(state.selected+1)%4;
@@ -210,7 +218,7 @@ function drawLensA(p){
   if(state.points[next])drawGuideRay(x,p,state.points[next],sx,sy,S,l.width,l.height);
   x.restore();
 
-  // Croce centrale: è il punto teorico di intersezione.
+  // Croce centrale: coincide sempre col punto selezionato.
   x.strokeStyle='#2ee66b';x.lineWidth=3;x.setLineDash([]);
   x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();
   x.fillStyle='#ffd322';x.beginPath();x.arc(l.width/2,l.height/2,7,0,Math.PI*2);x.fill();
