@@ -45,7 +45,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 .pr{display:flex;align-items:center;gap:10px;text-align:left;margin-top:4px}
 .pr img{width:36px;border-radius:4px;flex-shrink:0}
 .pr span{font-size:.9rem}
-.ptable{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}.ptable th,.ptable td{padding:6px 5px;border-bottom:1px solid #8883;text-align:left;vertical-align:top}.ptable th{font-size:.75rem;opacity:.72}.pbox{background:var(--card);padding:10px;border-radius:9px;margin-top:9px}.pactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pactions a,.pactions button{width:auto;margin:0;padding:8px 10px;font-size:.78rem}.plink{display:inline-block;background:var(--card);color:var(--fg);border-radius:8px;padding:7px 9px;text-decoration:none;border:1px solid #8883}.mini{width:auto;padding:5px 7px;margin:0;font-size:.72rem}.rprev{width:100%;max-height:440px;object-fit:contain;background:#111;border-radius:10px;margin-top:8px}.rmanual{display:flex;gap:6px;margin-top:8px}.rmanual input{flex:1;min-width:0;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884;background:var(--bg);color:var(--fg)}.hide{display:none}
+.ptable{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}.ptable th,.ptable td{padding:6px 5px;border-bottom:1px solid #8883;text-align:left;vertical-align:top}.ptable th{font-size:.75rem;opacity:.72}.pbox{background:var(--card);padding:10px;border-radius:9px;margin-top:9px}.pactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pactions a,.pactions button{width:auto;margin:0;padding:8px 10px;font-size:.78rem}.plink{display:inline-block;background:var(--card);color:var(--fg);border-radius:8px;padding:7px 9px;text-decoration:none;border:1px solid #8883}.mini{width:auto;padding:5px 7px;margin:0;font-size:.72rem}.rprev{width:100%;max-height:440px;object-fit:contain;background:#111;border-radius:10px;margin-top:8px}.uploadGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.uploadBtn{display:flex;align-items:center;justify-content:center;text-align:center;font:inherit;padding:12px 16px;border-radius:10px;background:var(--soft);color:var(--fg);border:1px solid var(--line);min-height:52px;cursor:pointer}.uploadBtn:active{transform:scale(.99)}.photoActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.photoActions button{width:auto;flex:1;min-width:140px}.rmanual{display:flex;gap:6px;margin-top:8px}.rmanual input{flex:1;min-width:0;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884;background:var(--bg);color:var(--fg)}.hide{display:none}
 #restoreMsg{border-left:4px solid var(--ok)}
 @media(max-width:700px){body{padding-inline:10px}.apphead{padding-top:12px}.featuregrid{grid-template-columns:1fr}.topactions{width:100%}.topactions button{flex:1}.vb{flex-wrap:wrap}.vb button{min-width:45%}.ptable{display:block;overflow-x:auto;white-space:nowrap}}
 </style>
@@ -132,14 +132,18 @@ video{width:100%;height:100%;object-fit:contain;display:block}
     <select id="rgame" style="font:inherit;padding:8px;width:100%;margin-top:4px"><option value="poke">Pokémon</option><option value="ygo">Yu-Gi-Oh!</option></select>
   </label>
   <button id="rfront" class="sec" onclick="usaFronteOCR()" style="display:none">Usa la foto “Fronte” già scattata</button>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-    <button class="sec" type="button" onclick="document.getElementById('rfileCamera').click()" style="margin:0">📷 Scatta foto</button>
-    <button class="sec" type="button" onclick="document.getElementById('rfileGallery').click()" style="margin:0">🖼️ Scegli dalla galleria</button>
+  <div class="uploadGrid">
+    <label class="uploadBtn" for="rfileCamera">📷 Scatta foto</label>
+    <label class="uploadBtn" for="rfileGallery">🖼️ Scegli dalla galleria</label>
   </div>
-  <input id="rfileCamera" type="file" accept="image/*" capture="environment" class="hide">
-  <input id="rfileGallery" type="file" accept="image/*" class="hide">
+  <input id="rfileCamera" type="file" accept="image/*" capture="environment" class="hide" onchange="handleRecognizerInput(this,'camera')">
+  <input id="rfileGallery" type="file" accept="image/*" class="hide" onchange="handleRecognizerInput(this,'gallery')">
   <img id="rpreview" class="rprev" alt="Foto carta" style="display:none">
   <div id="rstatus" class="msg hide"></div>
+  <div id="rphotoActions" class="photoActions hide">
+    <button class="sec" type="button" onclick="usaFotoImportataPerCentratura()">⌗ Apri centratura</button>
+    <button class="sec" type="button" onclick="usaFotoImportataComeFronte()">✓ Usa come fronte</button>
+  </div>
   <div id="rresults"></div>
   <div class="pbox">
     <b>Ricerca assistita</b>
@@ -258,7 +262,8 @@ async function avvia(){
     await apriCamera();
     $('start').classList.add('hide');$('cap').classList.remove('hide');mostraStep();
   }catch(e){
-    $('start').insertAdjacentHTML('beforeend','<div class="msg">Non riesco ad aprire la fotocamera ('+e.name+'). Controlla i permessi del browser, oppure usa il pulsante per scegliere una foto.</div>');
+    const denied=e&&((e.name==='NotAllowedError')||(e.name==='SecurityError'));
+    $('start').insertAdjacentHTML('beforeend','<div class="msg">'+(denied?'<b>Fotocamera bloccata dal browser.</b><br>Puoi continuare subito dalla galleria; la valutazione funziona anche senza permesso fotocamera.':'Non riesco ad aprire la fotocamera ('+e.name+').')+'</div>');
     $('fbl').classList.remove('hide');
   }
 }
@@ -723,7 +728,7 @@ $('file').onchange=e=>{
 };
 </script>
 <script src="auto-camera.js?v=20260925-3"></script>
-<script src="recognizer.js?v=20260925-3"></script>
+<script src="recognizer.js?v=20260925-4"></script>
 <script src="grading-state.js?v=20260925-3"></script>
 </body>
 </html>
