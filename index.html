@@ -141,6 +141,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
   <img id="rpreview" class="rprev" alt="Foto carta" style="display:none">
   <div id="rstatus" class="msg hide"></div>
   <div id="rphotoActions" class="photoActions hide">
+    <button id="rRecognizeBtn" type="button" onclick="riconosciFotoImportata()" style="flex-basis:100%">✨ Riconosci e valuta</button>
     <button class="sec" type="button" onclick="usaFotoImportataPerCentratura()">⌗ Apri centratura</button>
     <button class="sec" type="button" onclick="usaFotoImportataComeFronte()">✓ Usa come fronte</button>
   </div>
@@ -391,11 +392,40 @@ function apriCent(url){
   if(!url){alert('Questa foto non c\u2019è ancora.');return}
   const im=new Image();
   im.onload=async()=>{
-    const s=Math.min(1,2400/Math.max(im.naturalWidth,im.naturalHeight));
+    const s=Math.min(1,1400/Math.max(im.naturalWidth,im.naturalHeight));
     WK=document.createElement('canvas');WK.width=Math.round(im.naturalWidth*s);WK.height=Math.round(im.naturalHeight*s);
     WK.getContext('2d').drawImage(im,0,0,WK.width,WK.height);
     PTS=[null,null,null,null];TG=0;LN={};TB=0;
     ['start','fine','cap','prezzo','riconosci'].forEach(x=>$(x).classList.add('hide'));$('cent').classList.remove('hide');
+
+    if(window.__galleryCenterOnce){
+      const cropped=!!window.__galleryCropFound;
+      window.__galleryCenterOnce=false;window.__galleryCropFound=false;
+      const [gw,gh]=$('gioco').value.split(',').map(Number);DIM={w:gw,h:gh};
+
+      if(cropped){
+        // Il ritaglio rapido ha già isolato la carta: niente OpenCV e niente omografia pesante.
+        RC=WK;LN={};TB=0;
+        $('stA').classList.add('hide');$('stB').classList.remove('hide');
+        vaiB();
+        let autoB=null;
+        if(window.AutoCardVision){
+          try{autoB=AutoCardVision.detectBorders(RC,DIM,PX);if(autoB&&autoB.lines)LN=autoB.lines}catch(e){}
+        }
+        dB();
+        if(autoB&&autoB.lines){
+          $('hB').textContent='✓ Carta già isolata dalla galleria. Ho proposto i bordi; controllali e correggili se serve.';
+          risultato();
+        }else{
+          $('hB').textContent='Carta isolata. Segna o correggi i bordi senza altri calcoli automatici.';
+        }
+      }else{
+        vaiA();
+        $('hA').textContent='Foto da galleria: rilevamento pesante disattivato per evitare blocchi. Posiziona manualmente i 4 angoli e poi premi Raddrizza.';
+      }
+      return;
+    }
+
     vaiA();
     if(window.AutoCardVision){
       $('hA').textContent='Rilevo automaticamente i quattro angoli…';
@@ -814,8 +844,8 @@ $('file').onchange=e=>{
   im.src=URL.createObjectURL(f);e.target.value='';
 };
 </script>
-<script src="auto-camera.js?v=20260925-7"></script>
-<script src="recognizer.js?v=20260925-7"></script>
-<script src="grading-state.js?v=20260925-3"></script>
+<script src="auto-camera.js?v=20260925-9"></script>
+<script src="recognizer.js?v=20260925-9"></script>
+<script src="grading-state.js?v=20260925-9"></script>
 </body>
 </html>
