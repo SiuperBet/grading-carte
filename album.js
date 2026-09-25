@@ -3,8 +3,12 @@
 
 var $=function(id){return document.getElementById(id)};
 var OWN_KEY='gradingCarte.collection.v2';
-var SET_CACHE_KEY='gradingCarte.sets.v5.';
+var SET_CACHE_KEY='gradingCarte.sets.v6.';
 var POKE_DATA_BASE='https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master/';
+var TCGDEX_BASE='https://api.tcgdex.net/v2/en';
+var TCGDEX_SET_KEY='gradingCarte.tcgdexSets.v1';
+var TCGDEX_PRICE_KEY='gradingCarte.tcgdexPrices.v1';
+var tcgdexSetList=null,tcgdexPriceCache=loadTcgDexPriceCache(),priceRun=0;
 var SET_STATS_KEY='gradingCarte.setStats.v1';
 var UI_KEY='gradingCarte.albumUI.v2';
 var owned=loadOwned();
@@ -30,6 +34,22 @@ function loadSetStats(){
   }catch(e){return {}}
 }
 function saveSetStats(){try{localStorage.setItem(SET_STATS_KEY,JSON.stringify(setStats))}catch(e){}}
+function loadTcgDexPriceCache(){
+  try{
+    var x=JSON.parse(localStorage.getItem(TCGDEX_PRICE_KEY)||'{}');
+    return x&&typeof x==='object'&&!Array.isArray(x)?x:{};
+  }catch(e){return {}}
+}
+function saveTcgDexPriceCache(){try{localStorage.setItem(TCGDEX_PRICE_KEY,JSON.stringify(tcgdexPriceCache))}catch(e){}}
+function normText(s){
+  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+    .replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+}
+function normLocalId(s){
+  s=String(s==null?'':s).trim();
+  if(/^\d+$/.test(s))return String(parseInt(s,10));
+  return s.toLowerCase().replace(/^0+/,'');
+}
 function loadUI(){try{return JSON.parse(localStorage.getItem(UI_KEY)||'{}')||{}}catch(e){return {}}}
 function saveUI(){
   try{
@@ -90,7 +110,7 @@ function pokePrices(c){
     }
   }
   return {
-    sortPrice:cmRef,
+    sortPrice:cmRef||tpRef,
     displayPrice:cmRef||tpRef,
     currency:cmRef?'€':(tpRef?'$':''),
     priceSource:cmRef?'Cardmarket trend/average':(tpRef?'TCGplayer market '+tpVariant:''),
@@ -104,6 +124,7 @@ function normalizePoke(c,set){
     image:c.images&&c.images.small||'',imageLarge:c.images&&c.images.large||'',
     setName:set.name,setCode:set.id,price:p.displayPrice,currency:p.currency,sortPrice:p.sortPrice,
     priceSource:p.priceSource,tcgplayer:c.tcgplayer||null,cardmarket:c.cardmarket||null,
+    priceChecked:!!(c.tcgplayer||c.cardmarket),tcgdexCardId:c.tcgdexCardId||'',tcgdexUpdated:c.tcgdexUpdated||'',
     masterGroup:c.masterGroup||'',sourceSet:c.sourceSet||set.id,sortIndex:Number.isFinite(c.sortIndex)?c.sortIndex:null,
     energyType:c.energyType||'',artist:c.artist||''
   };
@@ -117,6 +138,186 @@ function normalizeYgo(c,p){
     setName:p.set_name,setCode:p.set_code||'',price:setPrice,currency:'$',sortPrice:setPrice,
     priceSource:'YGOPRODeck set_price',vendorPrices:vp
   };
+}
+
+function mapTcgDexPricing(card,data){
+  var pricing=data&&data.pricing||null;
+  card.priceChecked=true;
+  card.tcgdexCardId=data&&data.id||card.tcgdexCardId||'';
+  card.tcgdexUpdated='';
+  if(!pricing){
+    card.price=null;card.currency='';card.sortPrice=null;card.priceSource='';
+    return card;
+  }
+  var cm=pricing.cardmarket||null,tp=pricing.tcgplayer||null;
+  if(cm){
+    card.cardmarket={
+      updatedAt:cm.updated||'',
+      url:'',
+      prices:{
+        lowPrice:cm.low,averageSellPrice:cm.avg,trendPrice:cm.trend,
+        avg1:cm.avg1,avg7:cm.avg7,avg30:cm.avg30,
+        reverseHoloLow:cm['low-holo'],reverseHoloSell:cm['avg-holo'],reverseHoloTrend:cm['trend-holo'],
+        reverseHoloAvg1:cm['avg1-holo'],reverseHoloAvg7:cm['avg7-holo'],reverseHoloAvg30:cm['avg30-holo']
+      }
+    };
+  }
+  if(tp){
+    var out={};
+    Object.keys(tp).forEach(function(k){
+      if(k==='updated'||k==='unit')return;
+      var p=tp[k];if(!p||typeof p!=='object')return;
+      var nk=k==='reverse-holofoil'?'reverseHolofoil':k==='1st-edition'?'firstEditionNormal':k==='1st-edition-holofoil'?'firstEditionHolofoil':k;
+      out[nk]={low:p.lowPrice,mid:p.midPrice,high:p.highPrice,market:p.marketPrice,directLow:p.directLowPrice};
+    });
+    card.tcgplayer={updatedAt:tp.updated||'',url:'',prices:out};
+  }
+  var pp=pokePrices(card);
+  card.price=pp.displayPrice;card.currency=pp.currency;card.sortPrice=pp.sortPrice;
+  card.priceSource=pp.priceSource?(pp.priceSource+' · TCGdex'):'';
+  card.tcgdexUpdated=(cm&&cm.updated)||(tp&&tp.updated)||'';
+  return card;
+}
+function cachedTcgDex(id){
+  var x=tcgdexPriceCache[id];
+  if(!x||!x.at||Date.now()-x.at>21600000)return null;
+  return x.data||{id:id,pricing:null};
+}
+function cacheTcgDex(id,data){
+  tcgdexPriceCache[id]={at:Date.now(),data:{id:id,pricing:data&&data.pricing||null}};
+}
+async function getTcgDexSets(){
+  if(tcgdexSetList)return tcgdexSetList;
+  try{
+    var cached=JSON.parse(localStorage.getItem(TCGDEX_SET_KEY)||'null');
+    if(cached&&Date.now()-cached.at<86400000&&Array.isArray(cached.data)){
+      tcgdexSetList=cached.data;return tcgdexSetList;
+    }
+  }catch(e){}
+  var rows=await json(TCGDEX_BASE+'/sets',20000);
+  tcgdexSetList=Array.isArray(rows)?rows:[];
+  try{localStorage.setItem(TCGDEX_SET_KEY,JSON.stringify({at:Date.now(),data:tcgdexSetList}))}catch(e){}
+  return tcgdexSetList;
+}
+async function resolveTcgDexSet(set){
+  var all=await getTcgDexSets(),target=normText(set.name),code=normText(set.code||'');
+  var exact=all.find(function(x){return normText(x.name)===target});
+  if(exact)return exact;
+  if(code){
+    exact=all.find(function(x){return normText(x.id)===code});
+    if(exact)return exact;
+  }
+  var best=null,bestScore=0;
+  all.forEach(function(x){
+    var a=normText(x.name),score=0;
+    if(a&&target&&(a.indexOf(target)>=0||target.indexOf(a)>=0)){
+      score=Math.min(a.length,target.length)/Math.max(a.length,target.length);
+    }
+    if(score>bestScore){bestScore=score;best=x}
+  });
+  return bestScore>=.70?best:null;
+}
+async function getTcgDexSetFull(set){
+  var brief=await resolveTcgDexSet(set);
+  if(!brief)return null;
+  var ck='tcgdex:set:'+brief.id,hit=sessionGet(ck);
+  if(hit&&Array.isArray(hit.cards))return hit;
+  var full=await json(TCGDEX_BASE+'/sets/'+encodeURIComponent(brief.id),20000);
+  if(full&&Array.isArray(full.cards))sessionPut(ck,full);
+  return full;
+}
+function findTcgDexBrief(full,card){
+  if(!full||!Array.isArray(full.cards))return null;
+  var no=normLocalId(card.number),name=normText(card.name);
+  var sameNo=full.cards.filter(function(x){return normLocalId(x.localId)===no});
+  var byBoth=sameNo.find(function(x){return normText(x.name)===name});
+  if(byBoth)return byBoth;
+  if(sameNo.length===1)return sameNo[0];
+  return full.cards.find(function(x){return normText(x.name)===name})||null;
+}
+async function enrichOneTcgDex(full,card){
+  var brief=findTcgDexBrief(full,card);
+  if(!brief){card.priceChecked=true;return false}
+  var hit=cachedTcgDex(brief.id);
+  if(hit){mapTcgDexPricing(card,hit);return !!card.price}
+  try{
+    var data=await json(TCGDEX_BASE+'/cards/'+encodeURIComponent(brief.id),16000);
+    cacheTcgDex(brief.id,data);mapTcgDexPricing(card,data);
+    return !!card.price;
+  }catch(e){
+    return false;
+  }
+}
+async function startTcgDexPrices(set,cards,quiet){
+  if(S.game!=='poke'||!cards||!cards.length)return;
+  var run=++priceRun;
+  try{
+    var full=await getTcgDexSetFull(set);
+    if(run!==priceRun||!full){
+      if(!quiet&&run===priceRun)$('status').textContent='Catalogo caricato. Non trovo questo set su TCGdex.';
+      return;
+    }
+
+    var changed=false;
+    cards.forEach(function(card){
+      var brief=findTcgDexBrief(full,card),hit=brief&&cachedTcgDex(brief.id);
+      if(hit){mapTcgDexPricing(card,hit);changed=true}
+    });
+    if(changed){render();updateSetStats();updateSetMeta()}
+
+    var todo=cards.filter(function(card){
+      var brief=findTcgDexBrief(full,card);
+      return brief&&!cachedTcgDex(brief.id);
+    });
+    var done=0,priced=cards.filter(function(x){return n(x.price)!=null}).length;
+    if(!quiet)$('status').textContent='Carico prezzi Cardmarket/TCGplayer: '+priced+' già disponibili · '+todo.length+' da controllare…';
+
+    async function worker(){
+      while(todo.length&&run===priceRun){
+        var card=todo.shift(),ok=await enrichOneTcgDex(full,card);
+        done++;if(ok)priced++;
+        if(done%12===0||!todo.length){
+          saveTcgDexPriceCache();render();updateSetStats();updateSetMeta();
+          if(!quiet)$('status').textContent='Prezzi TCGdex: '+priced+' / '+cards.length+' carte con valore · '+done+' nuove controllate.';
+          await sleep(25);
+        }
+      }
+    }
+    await Promise.all([worker(),worker(),worker(),worker(),worker(),worker()]);
+    if(run===priceRun){
+      saveTcgDexPriceCache();render();updateSetStats();updateSetMeta();
+      var checked=cards.filter(function(x){return x.priceChecked}).length;
+      priced=cards.filter(function(x){return n(x.price)!=null}).length;
+      if(!quiet)$('status').textContent='✓ Prezzi controllati: '+priced+' / '+cards.length+' carte con valore disponibile · '+checked+' verificate su TCGdex.';
+    }
+  }catch(e){
+    if(!quiet&&run===priceRun)$('status').textContent='Catalogo caricato. Prezzi TCGdex momentaneamente non raggiungibili; riproverò alla prossima apertura.';
+  }
+}
+async function startMasterTcgDexPrices(cards){
+  var run=++priceRun;
+  try{
+    var rawIds=['me55','me55c'],priced=0,checked=0;
+    for(var ri=0;ri<rawIds.length;ri++){
+      if(run!==priceRun)return;
+      var rawId=rawIds[ri],baseSet=S.sets.find(function(x){return x.id===rawId});
+      if(!baseSet)continue;
+      var subset=cards.filter(function(x){return String(x.sourceSet||'').toLowerCase()===rawId});
+      if(!subset.length)continue;
+      var full=await getTcgDexSetFull(baseSet);
+      if(!full)continue;
+      for(var i=0;i<subset.length;i+=6){
+        var batch=subset.slice(i,i+6);
+        await Promise.all(batch.map(function(card){return enrichOneTcgDex(full,card)}));
+        checked+=batch.length;priced=cards.filter(function(x){return n(x.price)!=null}).length;
+        saveTcgDexPriceCache();render();updateSetStats();updateSetMeta();
+        $('status').textContent='Master Set · prezzi TCGdex: '+priced+' / '+cards.length+' con valore · '+checked+' carte controllate.';
+      }
+    }
+    if(run===priceRun)$('status').textContent='✓ Master Set: '+cards.filter(function(x){return n(x.price)!=null}).length+' / '+cards.length+' carte con valore disponibile.';
+  }catch(e){
+    if(run===priceRun)$('status').textContent='Master Set caricato; prezzi momentaneamente non raggiungibili.';
+  }
 }
 
 async function loadSets(){
@@ -205,6 +406,58 @@ function applySetSearch(preserveId){
   }).join('');
 }
 
+async function loadCards(){
+  var idx=$('setSelect').value;
+  if(idx==='')return;
+  S.set=S.shownSets[Number(idx)];
+  if(!S.set)return;
+  priceRun++;
+  restoreSetId=S.set.id;saveUI();
+
+  $('setPanel').style.display='';
+  $('setTitle').textContent=S.set.name;
+  updateSetMeta();
+  if(S.set.logo){$('setLogo').src=S.set.logo;$('setLogo').style.display=''}else $('setLogo').style.display='none';
+  $('cards').innerHTML='<div class="empty">Carico tutte le carte dell’espansione…</div>';
+  $('status').textContent='Caricamento completo di '+S.set.name+'…';
+
+  try{
+    var ck='albumcards:v7:'+S.game+':'+S.set.id;
+    var cached=sessionGet(ck);
+    if(cached&&Array.isArray(cached.cards)){
+      S.cards=cached.cards;S.loadInfo=cached.info||null;
+    }else{
+      if(S.game==='poke')S.cards=S.set.virtualMaster?await loadPokeMasterCards(S.set):await loadPokeCards(S.set);
+      else S.cards=await loadYgoCards(S.set);
+      sessionPut(ck,{cards:S.cards,info:S.loadInfo});
+    }
+
+    if(!(didRestoreSet&&ui.cardSearch!=null))$('cardSearch').value='';
+    else $('cardSearch').value=ui.cardSearch;
+
+    updateSetStats();render();updateSetMeta();
+
+    var expected=S.loadInfo&&S.loadInfo.expected||S.set.total||0;
+    if(expected&&S.cards.length<expected){
+      $('status').textContent='⚠ Caricate '+S.cards.length+' carte su '+expected+' dichiarate.';
+    }else{
+      var verified='';
+      if(S.game==='poke'&&S.loadInfo&&S.loadInfo.source){
+        verified=S.set.virtualMaster?' · composizione verificata 161 + 30 + 8':' · appartenenza verificata per codice '+S.set.id.toUpperCase();
+      }
+      $('status').textContent=S.cards.length+' carte/stampe caricate per '+S.set.name+verified+'.';
+    }
+
+    if(S.game==='poke'){
+      if(S.set.virtualMaster)startMasterTcgDexPrices(S.cards);
+      else startTcgDexPrices(S.set,S.cards,false);
+    }
+  }catch(e){
+    $('cards').innerHTML='<div class="empty">Non riesco a caricare questa espansione.</div>';
+    $('status').textContent='Errore: '+(e.name==='AbortError'?'tempo scaduto':e.message)+'.';
+  }
+}
+
 function exactPokeMembership(card,set){
   if(!card||!set)return false;
   if(card.set&&String(card.set.id||'').toLowerCase()===String(set.id).toLowerCase())return true;
@@ -256,7 +509,7 @@ function naturalNumber(a,b){
   return collator.compare(String(a.number||''),String(b.number||''));
 }
 async function loadPokeCards(set){
-  var pack=await getExactPokeSet(set.id,true),cards=pack.cards;
+  var pack=await getExactPokeSet(set.id,false),cards=pack.cards;
   S.loadInfo={expected:cards.length,pages:1,loaded:cards.length,source:'catalogo GitHub esatto',marketCount:pack.marketCount};
   $('status').textContent='Catalogo verificato '+set.id.toUpperCase()+': '+cards.length+' carte esatte'+(pack.marketCount?' · prezzi arricchiti per '+pack.marketCount:'')+'.';
   return cards.map(function(card){return normalizePoke(card,set)}).sort(naturalNumber);
@@ -276,7 +529,7 @@ function masterEnergyCards(){
 }
 async function loadPokeMasterCards(set){
   $('status').textContent='Creo il Master Set: carico set principale, Classic Collection ed Energie Base…';
-  var parts=await Promise.all([getExactPokeSet('me55',true),getExactPokeSet('me55c',true)]);
+  var parts=await Promise.all([getExactPokeSet('me55',false),getExactPokeSet('me55c',false)]);
   var main=parts[0].cards.map(function(card){
     var num=parseInt(card.number,10),isNum=/^\d+$/.test(String(card.number||''));
     card=Object.assign({},card);
@@ -348,7 +601,7 @@ function render(){
     return desc?-v:v;
   });
   $('cards').innerHTML=list.length?list.map(function(c){
-    var own=has(c),q=qty(c),price=c.price!=null?'<div class="priceTag">'+esc(c.currency+Number(c.price).toFixed(2))+'</div><div class="meta">'+esc(c.priceSource||'Prezzo fonte')+'</div>':'<div class="meta">Prezzo non disponibile</div>';
+    var own=has(c),q=qty(c),price=c.price!=null?'<div class="priceTag">'+esc(c.currency+Number(c.price).toFixed(2))+'</div><div class="meta">'+esc(c.priceSource||'Prezzo fonte')+'</div>':'<div class="meta">'+(S.game==='poke'&&!c.priceChecked?'Prezzo in caricamento…':'Prezzo non disponibile nelle fonti')+'</div>';
     return '<article class="card '+(own?'owned':'missing')+' '+(c.game==='ygo'?'ygo':'')+'" data-card-key="'+esc(c.key)+'">'+
       '<span class="badge">'+(own?'✓ CE L\'HO':'MANCA')+'</span>'+
       (c.image?'<img loading="lazy" src="'+esc(c.image)+'" alt="'+esc(c.name)+'">':
@@ -388,6 +641,7 @@ function updateSetMeta(){
 }
 
 function detailPokemon(c){
+  if(!c.priceChecked&&!c.cardmarket&&!c.tcgplayer)return '<div class="note">Prezzo in caricamento da TCGdex…</div>';
   var cm=c.cardmarket&&c.cardmarket.prices||{},tp=c.tcgplayer&&c.tcgplayer.prices||{};
   var cmRows=[
     ['Low',cm.lowPrice],['EX+',cm.lowPriceExPlus],['Media vendite',cm.averageSellPrice],['Trend',cm.trendPrice],['Media 1g',cm.avg1],['Media 7g',cm.avg7],['Media 30g',cm.avg30],
@@ -423,7 +677,7 @@ function showDetail(k){
       (own?'<button class="sec" data-detail-qty="'+esc(c.key)+'" data-d="-1">− 1</button><button class="sec" data-detail-qty="'+esc(c.key)+'" data-d="1">＋ 1</button>':'')+'</div></div>'+
     '</div>'+
     (c.game==='poke'?detailPokemon(c):detailYgo(c))+
-    '<div class="note" style="margin-top:10px">I valori sono quelli restituiti dalle fonti gratuite disponibili; non vengono inventati né convertiti tra valute.</div>';
+    '<div class="note" style="margin-top:10px">I valori Pokémon provengono da TCGdex quando disponibili (Cardmarket in EUR, TCGplayer in USD). Le valute restano separate e non vengono convertite. Un valore assente significa che la fonte non lo pubblica in quel momento.</div>';
   $('detailBack').classList.remove('hidden');
 }
 function closeDetail(){$('detailBack').classList.add('hidden')}
