@@ -734,9 +734,80 @@ function quickCardDetect(source,game){
 
   if(!best)return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  var conf=.26*Math.min(1,best.area/.62)+.23*best.support+.14*best.contrast+.10*best.uniformity+.17*(best.frameConsistency||0)+.10*Math.max(0,1-best.re/.135);
-  var full=best.q.map(function(p){return {x:p.x/sc,y:p.y/sc}});
-  return {found:true,points:full,confidence:Math.max(0,Math.min(1,conf)),width:sw,height:sh};
+  // Secondo passaggio: da ogni lato candidato cerca il bordo continuo più ESTERNO.
+  // Serve a evitare che una cornice stampata interna vinca sul bordo fisico della carta.
+  function lineFromPts(a,b){
+    var A=b.y-a.y,B=a.x-b.x,n=Math.hypot(A,B)||1;
+    A/=n;B/=n;return {A:A,B:B,C:-(A*a.x+B*a.y)};
+  }
+  function lineInter(a,b){
+    var det=a.A*b.B-b.A*a.B;if(Math.abs(det)<1e-6)return null;
+    return {x:(a.B*b.C-b.B*a.C)/det,y:(b.A*a.C-a.A*b.C)/det};
+  }
+  function shiftedSide(a,b,cx,cy,off){
+    var ln=lineFromPts(a,b),v=ln.A*cx+ln.B*cy+ln.C,sg=v>=0?1:-1;
+    var nx=-sg*ln.A,ny=-sg*ln.B;
+    var aa={x:a.x+nx*off,y:a.y+ny*off},bb={x:b.x+nx*off,y:b.y+ny*off};
+    return {a:aa,b:bb,line:lineFromPts(aa,bb)};
+  }
+  function refineSide(a,b,cx,cy,maxOff){
+    var rows=[],bestScore=0;
+    for(var off=0;off<=maxOff;off+=1){
+      var sh=shiftedSide(a,b,cx,cy,off);
+      if(!inside(sh.a,1)||!inside(sh.b,1))break;
+      var st=sideStats(sh.a,sh.b,cx,cy);
+      var edgeN=Math.min(1,st.edge/Math.max(1,edgeThr*1.9));
+      var conN=Math.min(1,st.contrast/70);
+      var score=.50*st.strong+.24*edgeN+.26*conN;
+      rows.push({off:off,score:score,st:st,sh:sh});
+      if(score>bestScore)bestScore=score;
+    }
+    var viable=rows.filter(function(r){
+      return r.st.strong>=.38&&r.st.contrast>=12&&r.st.edge>=edgeThr*.42&&r.score>=bestScore*.66;
+    });
+    if(!viable.length)return rows[0]||null;
+
+    // Tra bordi plausibili scegli quello più esterno; una texture casuale difficilmente
+    // resta continua lungo quasi tutto il lato.
+    viable.sort(function(a,b){return b.off-a.off||b.score-a.score});
+    return viable[0];
+  }
+
+  var cq=best.q,cx=(cq[0].x+cq[1].x+cq[2].x+cq[3].x)/4,cy=(cq[0].y+cq[1].y+cq[2].y+cq[3].y)/4;
+  var maxOff=Math.max(5,Math.round(Math.min(w,h)*.105));
+  var refs=[
+    refineSide(cq[0],cq[1],cx,cy,maxOff),
+    refineSide(cq[1],cq[2],cx,cy,maxOff),
+    refineSide(cq[2],cq[3],cx,cy,maxOff),
+    refineSide(cq[3],cq[0],cx,cy,maxOff)
+  ];
+
+  var outerVerified=false,refined=cq;
+  if(refs.every(Boolean)){
+    var q2=[
+      lineInter(refs[3].sh.line,refs[0].sh.line),
+      lineInter(refs[0].sh.line,refs[1].sh.line),
+      lineInter(refs[1].sh.line,refs[2].sh.line),
+      lineInter(refs[2].sh.line,refs[3].sh.line)
+    ];
+    if(q2.every(function(p){return inside(p,3)})&&convex(q2)){
+      var tw2=dist(q2[0],q2[1]),bw2=dist(q2[3],q2[2]),lh2=dist(q2[0],q2[3]),rh2=dist(q2[1],q2[2]);
+      var rr2=((tw2+bw2)/2)/Math.max(1,(lh2+rh2)/2);
+      var re2=Math.abs(rr2-ratio)/ratio;
+      var ar2=polyArea(q2)/(w*h);
+      var ow2=Math.min(tw2,bw2)/Math.max(tw2,bw2),oh2=Math.min(lh2,rh2)/Math.max(lh2,rh2);
+      var avgStrong=refs.reduce(function(s,r){return s+r.st.strong},0)/4;
+      var avgContrast=refs.reduce(function(s,r){return s+r.st.contrast},0)/4;
+      if(re2<=.14&&ar2>=best.area*.96&&ar2<=.90&&ow2>=.78&&oh2>=.78&&avgStrong>=.40&&avgContrast>=14){
+        refined=q2;best.area=ar2;best.re=re2;
+        outerVerified=true;
+      }
+    }
+  }
+
+  var conf=.24*Math.min(1,best.area/.62)+.22*best.support+.13*best.contrast+.09*best.uniformity+.15*(best.frameConsistency||0)+.09*Math.max(0,1-best.re/.135)+(outerVerified?.08:0);
+  var full=refined.map(function(p){return {x:p.x/sc,y:p.y/sc}});
+  return {found:true,points:full,confidence:Math.max(0,Math.min(1,conf)),outerVerified:outerVerified,width:sw,height:sh};
 }
 function detectedCropCanvas(source,det,padFactor){
   if(!det||!det.found||!det.points)return source;
@@ -807,11 +878,13 @@ async function prepareImportedPhoto(file,source){
     recCropFound=!!(recDetection&&recDetection.found);
 
     if(recCropFound){
-      recOcrUrl=detectedCropCanvas(recOriginalCanvas,recDetection,.045).toDataURL('image/jpeg',.9);
+      recOcrUrl=recDetection.outerVerified
+        ?detectedCropCanvas(recOriginalCanvas,recDetection,.055).toDataURL('image/jpeg',.9)
+        :recUrl;
       drawRecognizerDetection();
       rq('rDetectLegend').classList.remove('hide');
       var pct=Math.round((recDetection.confidence||0)*100);
-      setStatus('✓ Bordo carta rilevato ('+pct+'%). La foto completa resta intatta: controlla la linea verde oppure apri Centratura per correggere i 4 angoli.');
+      setStatus((recDetection.outerVerified?'✓ Perimetro esterno verificato':'⚠ Bordo proposto da verificare')+' ('+pct+'%). La foto completa resta intatta: controlla tutti e 4 i lati oppure apri Centratura per correggere gli angoli.');
     }else{
       var ov=rq('rDetectOverlay');if(ov){var oc=ov.getContext('2d');oc.clearRect(0,0,ov.width,ov.height)}
       setStatus('Foto completa caricata. Non ho trovato i 4 bordi con sufficiente sicurezza: apri Centratura e posiziona manualmente gli angoli sulla foto intera.');
