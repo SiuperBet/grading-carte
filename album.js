@@ -3,7 +3,7 @@
 
 var $=function(id){return document.getElementById(id)};
 var OWN_KEY='gradingCarte.collection.v2';
-var SET_CACHE_KEY='gradingCarte.sets.v4.';
+var SET_CACHE_KEY='gradingCarte.sets.v5.';
 var POKE_DATA_BASE='https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master/';
 var SET_STATS_KEY='gradingCarte.setStats.v1';
 var UI_KEY='gradingCarte.albumUI.v2';
@@ -103,7 +103,9 @@ function normalizePoke(c,set){
     key:'poke:'+c.id,game:'poke',id:c.id,name:c.name,number:c.number||'',rarity:c.rarity||'',
     image:c.images&&c.images.small||'',imageLarge:c.images&&c.images.large||'',
     setName:set.name,setCode:set.id,price:p.displayPrice,currency:p.currency,sortPrice:p.sortPrice,
-    priceSource:p.priceSource,tcgplayer:c.tcgplayer||null,cardmarket:c.cardmarket||null
+    priceSource:p.priceSource,tcgplayer:c.tcgplayer||null,cardmarket:c.cardmarket||null,
+    masterGroup:c.masterGroup||'',sourceSet:c.sourceSet||set.id,sortIndex:Number.isFinite(c.sortIndex)?c.sortIndex:null,
+    energyType:c.energyType||'',artist:c.artist||''
   };
 }
 function normalizeYgo(c,p){
@@ -142,6 +144,12 @@ async function loadSets(){
       S.sets=(src||[]).map(function(x){
         return {id:x.id,name:x.name,series:x.series||'',code:x.ptcgoCode||x.id,date:x.releaseDate||'',printedTotal:Number(x.printedTotal)||0,total:Number(x.total)||Number(x.printedTotal)||0,logo:x.images&&x.images.logo||''};
       }).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''))||collator.compare(a.name,b.name)});
+      var base30=S.sets.find(function(x){return x.id==='me55'});
+      S.sets.unshift({
+        id:'master-me55',name:'30th Celebration — Master Set completo',series:'Mega Evolution',
+        code:'ME55 MASTER',date:'2026/09/16',printedTotal:199,total:199,
+        logo:base30&&base30.logo||'',virtualMaster:true
+      });
     }else{
       var y=await json('https://db.ygoprodeck.com/api/v7/cardsets.php');
       S.sets=(y||[]).map(function(x){
@@ -211,83 +219,82 @@ function mergePokeMarket(base,market){
   if(market.rarity)out.rarity=market.rarity;
   return out;
 }
-function naturalNumber(a,b){return collator.compare(String(a.number||''),String(b.number||''))}
-async function loadCards(){
-  var idx=$('setSelect').value;
-  if(idx==='')return;
-  S.set=S.shownSets[Number(idx)];
-  if(!S.set)return;
-  restoreSetId=S.set.id;saveUI();
-  $('setPanel').style.display='';
-  $('setTitle').textContent=S.set.name;
-  updateSetMeta();
-  if(S.set.logo){$('setLogo').src=S.set.logo;$('setLogo').style.display=''}else $('setLogo').style.display='none';
-  $('cards').innerHTML='<div class="empty">Carico tutte le carte dell’espansione...</div>';
-  $('status').textContent='Caricamento completo di '+S.set.name+'...';
-  try{
-    var ck='albumcards:v5:'+S.game+':'+S.set.id;
-    var cached=sessionGet(ck);
-    if(cached&&Array.isArray(cached.cards)){
-      S.cards=cached.cards;S.loadInfo=cached.info||null;
-    }else{
-      if(S.game==='poke')S.cards=await loadPokeCards(S.set);
-      else S.cards=await loadYgoCards(S.set);
-      sessionPut(ck,{cards:S.cards,info:S.loadInfo});
-    }
-    if(!(didRestoreSet&&ui.cardSearch!=null))$('cardSearch').value='';
-    else $('cardSearch').value=ui.cardSearch;
-    updateSetStats();
-    render();
-    updateSetMeta();
-    var expected=S.loadInfo&&S.loadInfo.expected||S.set.total||0;
-    if(expected&&S.cards.length<expected){
-      $('status').textContent='⚠ Caricate '+S.cards.length+' carte su '+expected+' dichiarate. La fonte catalogo non ne ha restituite altre.';
-    }else{
-      var verified=S.game==='poke'&&S.loadInfo&&S.loadInfo.source?' · appartenenza verificata per codice '+S.set.id.toUpperCase():'';
-      $('status').textContent=S.cards.length+' carte/stampe caricate per '+S.set.name+verified+'.';
-    }
-  }catch(e){
-    $('cards').innerHTML='<div class="empty">Non riesco a caricare questa espansione.</div>';
-    $('status').textContent='Errore: '+(e.name==='AbortError'?'tempo scaduto':e.message)+'.';
-  }
-}
-async function loadPokeCards(set){
-  // Fonte autorevole per l'appartenenza al set: file JSON pubblico del catalogo Pokémon TCG Data.
-  // In questo modo ME55 e ME55C non possono essere mescolati anche se l'API prezzi risponde male.
-  var rawUrl=POKE_DATA_BASE+'cards/en/'+encodeURIComponent(set.id)+'.json';
+async function getExactPokeSet(setId,withMarket){
+  var pseudo={id:setId},rawUrl=POKE_DATA_BASE+'cards/en/'+encodeURIComponent(setId)+'.json';
   var exact=await json(rawUrl,22000);
   if(!Array.isArray(exact))throw new Error('Catalogo set non valido');
-  exact=exact.filter(function(card){return exactPokeMembership(card,set)});
-  if(!exact.length)throw new Error('Nessuna carta trovata nel catalogo esatto '+set.id);
+  exact=exact.filter(function(card){return exactPokeMembership(card,pseudo)});
+  if(!exact.length)throw new Error('Nessuna carta trovata nel catalogo esatto '+setId);
 
   var byId={};
   exact.forEach(function(card){byId[String(card.id).toLowerCase()]=card});
   var marketCount=0;
-
-  // Arricchimento facoltativo: se il vecchio API risponde, usiamo SOLO record dello stesso set esatto.
-  // Qualunque 500 o risposta contaminata viene ignorata senza alterare il catalogo.
-  try{
-    var page=1,total=1,guard=0;
-    while(page<=10&&guard<10){
-      var q='set.id:'+set.id;
-      var api=await json('https://api.pokemontcg.io/v2/cards?q='+encodeURIComponent(q)+'&orderBy=number&pageSize=250&page='+page,12000);
-      var rows=(api.data||[]).filter(function(card){return exactPokeMembership(card,set)});
-      rows.forEach(function(card){
-        var k=String(card.id||'').toLowerCase();
-        if(byId[k]){byId[k]=mergePokeMarket(byId[k],card);marketCount++}
-      });
-      total=Number(api.totalCount)||0;
-      if(!(api.data||[]).length||page*250>=total)break;
-      page++;guard++;
-    }
-  }catch(e){
-    // Il catalogo resta valido anche quando l'endpoint prezzi è temporaneamente in HTTP 500.
+  if(withMarket!==false){
+    try{
+      var page=1,total=1,guard=0;
+      while(page<=10&&guard<10){
+        var q='set.id:'+setId;
+        var api=await json('https://api.pokemontcg.io/v2/cards?q='+encodeURIComponent(q)+'&orderBy=number&pageSize=250&page='+page,12000);
+        var rows=(api.data||[]).filter(function(card){return exactPokeMembership(card,pseudo)});
+        rows.forEach(function(card){
+          var k=String(card.id||'').toLowerCase();
+          if(byId[k]){byId[k]=mergePokeMarket(byId[k],card);marketCount++}
+        });
+        total=Number(api.totalCount)||0;
+        if(!(api.data||[]).length||page*250>=total)break;
+        page++;guard++;
+      }
+    }catch(e){}
   }
-
-  var cards=Object.keys(byId).map(function(k){return byId[k]});
-  S.loadInfo={expected:cards.length,pages:1,loaded:cards.length,source:'catalogo GitHub esatto',marketCount:marketCount};
-  $('status').textContent='Catalogo verificato '+set.id.toUpperCase()+': '+cards.length+' carte esatte'+(marketCount?' · prezzi arricchiti per '+marketCount:'')+'.';
+  return {cards:Object.keys(byId).map(function(k){return byId[k]}),marketCount:marketCount};
+}
+function naturalNumber(a,b){
+  if(Number.isFinite(a.sortIndex)||Number.isFinite(b.sortIndex)){
+    var aa=Number.isFinite(a.sortIndex)?a.sortIndex:999999,bb=Number.isFinite(b.sortIndex)?b.sortIndex:999999;
+    if(aa!==bb)return aa-bb;
+  }
+  return collator.compare(String(a.number||''),String(b.number||''));
+}
+async function loadPokeCards(set){
+  var pack=await getExactPokeSet(set.id,true),cards=pack.cards;
+  S.loadInfo={expected:cards.length,pages:1,loaded:cards.length,source:'catalogo GitHub esatto',marketCount:pack.marketCount};
+  $('status').textContent='Catalogo verificato '+set.id.toUpperCase()+': '+cards.length+' carte esatte'+(pack.marketCount?' · prezzi arricchiti per '+pack.marketCount:'')+'.';
   return cards.map(function(card){return normalizePoke(card,set)}).sort(naturalNumber);
+}
+function masterEnergyCards(){
+  var e=[
+    ['grass','Basic Grass Energy','🌿'],['fire','Basic Fire Energy','🔥'],['water','Basic Water Energy','💧'],['lightning','Basic Lightning Energy','⚡'],
+    ['psychic','Basic Psychic Energy','🔮'],['fighting','Basic Fighting Energy','✊'],['darkness','Basic Darkness Energy','🌑'],['metal','Basic Metal Energy','⚙️']
+  ];
+  return e.map(function(x,i){
+    return {
+      id:'me55-energy-'+x[0],name:x[1],number:'',rarity:'Basic Energy',images:null,
+      masterGroup:'Energie Base',sourceSet:'MEE / 30th Celebration',sortIndex:3000+i,
+      energyType:x[0],energySymbol:x[2],artist:'YOSHIROTTEN'
+    };
+  });
+}
+async function loadPokeMasterCards(set){
+  $('status').textContent='Creo il Master Set: carico set principale, Classic Collection ed Energie Base…';
+  var parts=await Promise.all([getExactPokeSet('me55',true),getExactPokeSet('me55c',true)]);
+  var main=parts[0].cards.map(function(card){
+    var num=parseInt(card.number,10),isNum=/^\d+$/.test(String(card.number||''));
+    card=Object.assign({},card);
+    card.masterGroup=isNum&&num<=128?'Main Set':'Secret / RGB';
+    card.sourceSet='ME55';
+    card.sortIndex=isNum?num:(200+({R:1,G:2,B:3}[String(card.number||'').toUpperCase()]||9));
+    return card;
+  });
+  var classic=parts[1].cards.map(function(card,i){
+    card=Object.assign({},card);
+    card.masterGroup='Classic Collection';card.sourceSet='ME55C';card.sortIndex=1000+i;
+    return card;
+  });
+  var energy=masterEnergyCards();
+  var all=main.concat(classic,energy);
+  S.loadInfo={expected:199,pages:1,loaded:all.length,source:'Master Set verificato',marketCount:parts[0].marketCount+parts[1].marketCount};
+  $('status').textContent='Master Set verificato: '+all.length+' / 199 slot · 161 set principale + 30 Classic Collection + 8 Energie Base.';
+  return all.map(function(card){return normalizePoke(card,set)}).sort(naturalNumber);
 }
 async function loadYgoCards(set){
   var all=[],url='https://db.ygoprodeck.com/api/v7/cardinfo.php?cardset='+encodeURIComponent(set.name)+'&num=100&offset=0',guard=0;
@@ -343,9 +350,10 @@ function render(){
     var own=has(c),q=qty(c),price=c.price!=null?'<div class="priceTag">'+esc(c.currency+Number(c.price).toFixed(2))+'</div><div class="meta">'+esc(c.priceSource||'Prezzo fonte')+'</div>':'<div class="meta">Prezzo non disponibile</div>';
     return '<article class="card '+(own?'owned':'missing')+' '+(c.game==='ygo'?'ygo':'')+'" data-card-key="'+esc(c.key)+'">'+
       '<span class="badge">'+(own?'✓ CE L\'HO':'MANCA')+'</span>'+
-      (c.image?'<img loading="lazy" src="'+esc(c.image)+'" alt="'+esc(c.name)+'">':'<div style="aspect-ratio:63/88;background:#0001;border-radius:8px"></div>')+
+      (c.image?'<img loading="lazy" src="'+esc(c.image)+'" alt="'+esc(c.name)+'">':
+        (c.energyType?'<div class="energyPlaceholder" data-energy="'+esc(c.energyType)+'"><div class="energyIcon">'+esc(({grass:'🌿',fire:'🔥',water:'💧',lightning:'⚡',psychic:'🔮',fighting:'✊',darkness:'🌑',metal:'⚙️'})[c.energyType]||'✦')+'</div><div>30th Celebration<br>Basic Energy</div></div>':'<div style="aspect-ratio:63/88;background:#0001;border-radius:8px"></div>'))+
       '<div class="name">'+esc(c.name)+'</div>'+
-      '<div class="meta">'+esc(c.number)+(c.rarity?' · '+esc(c.rarity):'')+'</div>'+price+
+      '<div class="meta">'+(c.number?esc(c.number):'senza numero')+(c.rarity?' · '+esc(c.rarity):'')+(c.masterGroup?' · '+esc(c.masterGroup):'')+'</div>'+price+
       '<button class="'+(own?'sec ':'')+'own-toggle" data-key="'+esc(c.key)+'">'+(own?'Rimuovi dalla collezione':'Segna come posseduta')+'</button>'+
       (own?'<div class="qty"><button class="sec qty-btn" data-key="'+esc(c.key)+'" data-d="-1">−</button><b>'+q+'</b><button class="sec qty-btn" data-key="'+esc(c.key)+'" data-d="1">＋</button></div>':'')+
       '</article>';
@@ -370,8 +378,9 @@ function updateSetStats(){
 function updateSetMeta(){
   if(!S.set)return;
   var parts=[S.game==='poke'?S.set.series:S.set.code,S.set.date,S.set.total?S.set.total+' carte dichiarate':''].filter(Boolean);
+  if(S.game==='poke'&&String(S.set.id).toLowerCase()==='master-me55')parts.push('199 slot: 161 principale + 30 Classic + 8 Energie');
   if(S.game==='poke'&&String(S.set.id).toLowerCase()==='me55c')parts.push('Classic Collection separata: 30 carte');
-  if(S.game==='poke'&&String(S.set.id).toLowerCase()==='me55')parts.push('set principale: 161 carte (128 numerate + carte extra)');
+  if(S.game==='poke'&&String(S.set.id).toLowerCase()==='me55')parts.push('set principale: 161 carte');
   var st=setStats[keyForSet(S.game,S.set.id)];
   if(st&&n(st.sum))parts.push('valore catalogo noto '+st.currency+Number(st.sum).toFixed(2)+' ('+st.priced+'/'+st.total+' con prezzo)');
   $('setMeta').textContent=parts.join(' · ');
@@ -405,8 +414,8 @@ function showDetail(k){
   var own=has(c),q=qty(c);
   $('detail').innerHTML='<button class="sec close" data-close-detail>✕</button>'+
     '<div class="detailTop">'+
-      '<img src="'+esc(c.imageLarge||c.image)+'" alt="'+esc(c.name)+'">'+
-      '<div><h2>'+esc(c.name)+'</h2><div class="note">'+esc(c.setName)+' · '+esc(c.number)+(c.rarity?' · '+esc(c.rarity):'')+'</div>'+
+      (c.image?'<img src="'+esc(c.imageLarge||c.image)+'" alt="'+esc(c.name)+'">':'<div class="energyPlaceholder detailEnergy" data-energy="'+esc(c.energyType||'')+'"><div class="energyIcon">'+esc(({grass:'🌿',fire:'🔥',water:'💧',lightning:'⚡',psychic:'🔮',fighting:'✊',darkness:'🌑',metal:'⚙️'})[c.energyType]||'✦')+'</div><div>30th Celebration<br>Basic Energy</div></div>')+
+      '<div><h2>'+esc(c.name)+'</h2><div class="note">'+esc(c.setName)+(c.number?' · '+esc(c.number):'')+(c.rarity?' · '+esc(c.rarity):'')+(c.masterGroup?' · '+esc(c.masterGroup):'')+(c.sourceSet?' · '+esc(c.sourceSet):'')+'</div>'+
       '<div style="margin-top:8px"><b>'+ (own?'✓ Nella tua collezione':'Non ancora nella tua collezione') +'</b>'+(own?' · quantità '+q:'')+'</div>'+
       (c.price!=null?'<div class="priceTag" style="font-size:1.1rem">'+esc(c.currency+Number(c.price).toFixed(2))+'</div><div class="note">'+esc(c.priceSource||'Prezzo fonte')+'</div>':'')+
       '<div class="detailActions"><button data-detail-toggle="'+esc(c.key)+'">'+(own?'Rimuovi dalla collezione':'＋ Aggiungi alla collezione')+'</button>'+
