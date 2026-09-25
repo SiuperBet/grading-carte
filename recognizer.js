@@ -767,6 +767,24 @@ async function prepareImportedPhoto(file,source){
 
     // La foto mostrata e usata per la centratura è SEMPRE quella completa.
     recUrl=recOriginalCanvas.toDataURL('image/jpeg',.88);
+
+    // La foto scelta diventa subito il fronte della sessione.
+    // Il salvataggio persistente parte dopo il rendering per non bloccare l'interfaccia.
+    try{
+      if(typeof foto!=='undefined'){
+        foto[0]=recUrl;
+        if(typeof i==='number'&&i===0)i=1;
+        setTimeout(function(){
+          try{
+            if(window.GradingPersist){
+              GradingPersist.savePhoto(0,recUrl);
+              GradingPersist.saveMeta();
+            }
+          }catch(e){}
+        },180);
+      }
+    }catch(e){}
+
     rq('rpreview').src=recUrl;rq('rpreviewWrap').style.display='';
     await new Promise(function(resolve){rq('rpreview').onload=function(){resolve()};if(rq('rpreview').complete)resolve()});
     await yieldPaint();
@@ -830,7 +848,7 @@ window.usaFotoImportataComeFronte=function(){
   try{
     if(typeof foto!=='undefined'){
       foto[0]=recUrl;
-      setStatus('✓ Foto impostata come fronte. Il salvataggio locale avviene senza bloccare la pagina.');
+      setStatus('✓ Questa foto è già il fronte della sessione ed è stata salvata automaticamente.');
       rq('rfront').style.display='';
       setTimeout(function(){
         try{if(window.GradingPersist)GradingPersist.savePhoto(0,recUrl)}catch(e){}
