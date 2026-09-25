@@ -885,6 +885,65 @@ function drawRecognizerDetection(){
 }
 
 var recCropFound=false,recDetection=null,recOriginalCanvas=null,recOcrUrl=null;
+function detPointError(a,b){
+  if(!a||!b||!a.points||!b.points||a.points.length!==4||b.points.length!==4)return 1;
+  var diag=Math.hypot(a.width||1,a.height||1),sum=0;
+  for(var i=0;i<4;i++)sum+=Math.hypot(a.points[i].x-b.points[i].x,a.points[i].y-b.points[i].y);
+  return sum/4/Math.max(1,diag);
+}
+function detAreaFraction(d){
+  if(!d||!d.points||!d.width||!d.height)return 0;
+  return polyArea(d.points)/(d.width*d.height);
+}
+function cvDetectionOk(d){
+  if(!d||!d.points||d.points.length!==4)return false;
+  var af=d.metrics&&Number(d.metrics.areaFraction)||detAreaFraction(d);
+  var re=d.metrics&&Number(d.metrics.ratioErr);
+  if(!Number.isFinite(re))re=1;
+  if((d.confidence||0)<.42||af<.16||af>.86||re>.15)return false;
+  var m=Math.min.apply(null,d.points.map(function(p){return Math.min(p.x,p.y,d.width-p.x,d.height-p.y)}));
+  return m>Math.min(d.width,d.height)*.004;
+}
+async function secondVisionCheck(canvas,game){
+  if(!window.AutoCardVision||!AutoCardVision.detectCard)return null;
+  try{
+    var timeout=new Promise(function(resolve){setTimeout(function(){resolve(null)},5500)});
+    var work=AutoCardVision.detectCard(canvas,game==='ygo'?'59,86':'63,88').catch(function(){return null});
+    return await Promise.race([work,timeout]);
+  }catch(e){return null}
+}
+function chooseDetection(custom,cvd,w,h){
+  var cOk=custom&&custom.found, vOk=cvDetectionOk(cvd);
+  if(!cOk&&!vOk)return null;
+  if(cOk){custom.width=w;custom.height=h}
+  if(vOk){cvd.width=w;cvd.height=h}
+
+  if(cOk&&vOk){
+    var err=detPointError(custom,cvd);
+    var ac=detAreaFraction(custom),av=detAreaFraction(cvd);
+    if(err<=.045&&Math.abs(ac-av)<=.10){
+      // Due algoritmi indipendenti concordano: media dei punti per ridurre piccoli errori.
+      var pts=custom.points.map(function(p,i){return {x:(p.x+cvd.points[i].x)/2,y:(p.y+cvd.points[i].y)/2}});
+      return {
+        found:true,points:pts,width:w,height:h,
+        confidence:Math.max(.72,Math.min(1,((custom.confidence||0)+(cvd.confidence||0))/2+.12)),
+        outerVerified:true,consensus:true
+      };
+    }
+
+    // Se non concordano non dichiarare mai il bordo "verificato".
+    // Mostra come proposta il candidato più plausibile, preferendo OpenCV se ha forma migliore.
+    var cr=custom.confidence||0,vr=cvd.confidence||0;
+    var pick=(vr>cr+.08)?cvd:custom;
+    return {
+      found:true,points:pick.points,width:w,height:h,
+      confidence:Math.min(.67,Math.max(cr,vr)),outerVerified:false,consensus:false
+    };
+  }
+  var one=vOk?cvd:custom;
+  return {found:true,points:one.points,width:w,height:h,confidence:Math.min(.64,one.confidence||.45),outerVerified:false,consensus:false};
+}
+
 async function prepareImportedPhoto(file,source){
   if(!file)return;
   setStatus(source==='gallery'?'Carico la foto dalla galleria…':'Carico la foto scattata…');
@@ -920,24 +979,30 @@ async function prepareImportedPhoto(file,source){
     await new Promise(function(resolve){rq('rpreview').onload=function(){resolve()};if(rq('rpreview').complete)resolve()});
     await yieldPaint();
 
-    setStatus('Cerco i quattro bordi della carta senza ritagliare la foto…');
+    setStatus('Cerco i quattro bordi della carta con due controlli indipendenti…');
     await yieldPaint();
     var game=rq('rgame').value==='ygo'?'ygo':'poke';
-    recDetection=quickCardDetect(recOriginalCanvas,game);
-    if(recDetection&&recDetection.found&&(recDetection.confidence||0)<.68)recDetection={found:false,points:null,confidence:recDetection.confidence||0,width:recOriginalCanvas.width,height:recOriginalCanvas.height};
+    var customDet=quickCardDetect(recOriginalCanvas,game);
+    if(customDet&&customDet.found&&(customDet.confidence||0)<.52)customDet=null;
+
+    setStatus('Verifico il perimetro con un secondo motore…');
+    var cvDet=await secondVisionCheck(recOriginalCanvas,game);
+    recDetection=chooseDetection(customDet,cvDet,recOriginalCanvas.width,recOriginalCanvas.height);
     recCropFound=!!(recDetection&&recDetection.found);
 
     if(recCropFound){
+      // L'OCR usa il ritaglio solo quando due motori concordano. In caso contrario usa la foto completa.
       recOcrUrl=recDetection.outerVerified
         ?detectedCropCanvas(recOriginalCanvas,recDetection,.055).toDataURL('image/jpeg',.9)
         :recUrl;
       drawRecognizerDetection();
       rq('rDetectLegend').classList.remove('hide');
       var pct=Math.round((recDetection.confidence||0)*100);
-      setStatus((recDetection.outerVerified?'✓ Perimetro esterno verificato':'⚠ Bordo proposto da verificare')+' ('+pct+'%). La foto completa resta intatta: controlla tutti e 4 i lati oppure apri Centratura per correggere gli angoli.');
+      setStatus((recDetection.outerVerified?'✓ Perimetro confermato da due rilevatori':'⚠ Perimetro non confermato')+' ('+pct+'%). '+(recDetection.outerVerified?'Puoi usarlo come base per la centratura.':'Non lo userò automaticamente per ritagliare o centrare la carta.'));
     }else{
       var ov=rq('rDetectOverlay');if(ov){var oc=ov.getContext('2d');oc.clearRect(0,0,ov.width,ov.height)}
-      setStatus('Foto completa caricata. Non ho trovato i 4 bordi con sufficiente sicurezza: apri Centratura e posiziona manualmente gli angoli sulla foto intera.');
+      recOcrUrl=recUrl;
+      setStatus('Foto completa caricata. Nessun perimetro abbastanza affidabile: il riconoscimento userà comunque tutta la foto.');
     }
   }catch(e){
     setStatus('Non riesco a caricare questa foto: '+(e&&e.message?e.message:'errore sconosciuto'),true);
