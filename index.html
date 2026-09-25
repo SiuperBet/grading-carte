@@ -28,8 +28,8 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 .msg{background:var(--card);padding:10px;border-radius:8px;margin-top:8px;font-size:.92rem}
 .prog{font-size:.85rem;opacity:.75}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.grid div{background:var(--card);border-radius:8px;padding:6px;font-size:.8rem}
-.grid img{width:100%;border-radius:6px;display:block}
+.grid>div{background:var(--card);border-radius:8px;padding:6px;font-size:.8rem}
+.grid>div>img{width:100%;border-radius:6px;display:block}
 .pan{background:var(--card);border-radius:10px;padding:8px;margin-top:10px}
 .pan canvas,#ov{width:100%;border-radius:6px;display:block}
 .pan label{display:block;font-size:.85rem;margin-top:6px}
@@ -67,7 +67,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 <header class="apphead">
   <div>
     <h1>📸 Card Lab</h1>
-    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione · <span style="opacity:.65">Build 2026.09.25.37</span></div>
+    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione · <span style="opacity:.65">Build 2026.09.25.38</span></div>
   </div>
   <div class="topactions">
     <button class="sec" onclick="location.href='album.html'">📚 Album</button>
@@ -124,7 +124,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
   <button class="sec" onclick="apriPrezzo()">Cerca prezzi e confronti di mercato</button>
   <button id="recognizeFrontBtn" class="sec" onclick="apriRiconoscimento(foto[0])">📷 Riconosci automaticamente il fronte</button>
   <button class="sec" onclick="location.href='album.html'">📚 Album / collezione</button>
-  <div class="msg">Per una stima completa servono fronte, retro, 4 angoli, 4 bordi e luce inclinata. Se manca qualcosa puoi comunque ottenere un'analisi parziale con livello di confidenza.</div>
+  <div class="msg">Per una stima completa servono fronte, retro, 4 angoli, 4 bordi e luce inclinata su fronte e retro. Se manca qualcosa puoi comunque ottenere un'analisi parziale con livello di confidenza.</div>
 </div>
 
 
@@ -249,7 +249,8 @@ const STEPS=[
  {t:'Bordo basso',h:'Come prima, per il bordo inferiore.',g:1},
  {t:'Bordo sinistro',h:'Come prima, per il bordo sinistro.',g:1},
  {t:'Bordo destro',h:'Come prima, per il bordo destro.',g:1},
- {t:'Luce inclinata',h:'Inclina la carta sotto una lampada: qui i riflessi sono voluti e servono a vedere graffi e pieghe.',g:0}
+ {t:'Luce inclinata (fronte)',h:'Inclina il fronte sotto una lampada: qui i riflessi sono voluti e servono a vedere graffi, pieghe e indentazioni.',g:0},
+ {t:'Luce inclinata (retro)',h:'Ripeti sul retro: i riflessi aiutano a evidenziare graffi, pieghe, pressioni e difetti della superficie.',g:0}
 ];
 // SOGLIE PROVVISORIE: da tarare sul tuo telefono
 const TH={buioMax:70,chiaroMax:200,nitidMin:40,abbagl:0.02};
@@ -978,9 +979,9 @@ $('file').onchange=e=>{
   im.src=URL.createObjectURL(f);e.target.value='';
 };
 </script>
-<script src="auto-camera.js?v=20260925-37"></script>
-<script src="card-center-v2.js?v=20260925-37"></script>
-<script src="recognizer.js?v=20260925-37"></script>
-<script src="grading-state.js?v=20260925-37"></script>\n<script src="grading-engine.js?v=20260925-37"></script>
+<script src="auto-camera.js?v=20260925-38"></script>
+<script src="card-center-v2.js?v=20260925-38"></script>
+<script src="recognizer.js?v=20260925-38"></script>
+<script src="grading-state.js?v=20260925-38"></script>\n<script src="grading-engine.js?v=20260925-38"></script>
 </body>
 </html>
