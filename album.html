@@ -15,16 +15,16 @@ button,.btn,select,input{font:inherit} button,.btn{border:0;border-radius:10px;p
 button.sec,.btn.sec{background:var(--panel);color:var(--fg);border:1px solid var(--line)}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:12px;box-shadow:var(--shadow)}
 .note{font-size:.86rem;color:var(--muted);line-height:1.4}
-.controls{display:grid;grid-template-columns:170px 1fr 1fr;gap:8px}
+.controls{display:grid;grid-template-columns:150px minmax(150px,1fr) minmax(180px,1.2fr) minmax(160px,1fr) 110px;gap:8px}
 .controls select,.controls input{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg)}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px}.row>*{min-width:0}
 .progress{height:12px;background:var(--line);border-radius:99px;overflow:hidden;flex:1;min-width:140px}.progress>div{height:100%;background:var(--ok);width:0}
 #stats{font-weight:700}.sethead{display:flex;gap:12px;align-items:center}.sethead img{max-width:150px;max-height:58px;object-fit:contain}
 .filters button.active{outline:2px solid var(--acc)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:10px;margin-top:12px}
-.card{position:relative;background:var(--panel);border:2px solid var(--line);border-radius:13px;padding:8px;overflow:hidden;transition:.15s}
+.card{position:relative;background:var(--panel);border:2px solid var(--line);border-radius:13px;padding:8px;overflow:hidden;transition:.15s;cursor:pointer}
 .card.owned{border-color:var(--ok);box-shadow:0 0 0 2px color-mix(in srgb,var(--ok) 18%,transparent),var(--shadow)}
-.card.missing{opacity:.43;filter:grayscale(.82) saturate(.28)}
+.card.missing{opacity:.72;filter:grayscale(.42) saturate(.68);background:color-mix(in srgb,var(--panel) 88%,var(--bg))}
 .card img{width:100%;aspect-ratio:63/88;object-fit:contain;border-radius:8px;background:#0001;display:block}
 .card.ygo img{aspect-ratio:59/86}
 .name{font-weight:750;font-size:.88rem;margin-top:6px;line-height:1.2}.meta{font-size:.74rem;color:var(--muted);min-height:32px;margin-top:3px}
@@ -32,7 +32,14 @@ button.sec,.btn.sec{background:var(--panel);color:var(--fg);border:1px solid var
 .owned .badge{background:var(--ok)}
 .card button{width:100%;margin-top:7px;padding:8px;font-size:.8rem}.qty{display:flex;gap:5px;align-items:center;margin-top:6px}.qty button{margin:0;width:auto;flex:1}.qty b{min-width:30px;text-align:center}
 .empty{text-align:center;padding:28px;color:var(--muted)} #status{margin-top:9px}
-@media(max-width:700px){.controls{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sethead{align-items:flex-start}.sethead img{max-width:110px}}
+.sorts{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:9px}.sorts select{padding:9px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--fg)}
+.priceTag{font-weight:800;margin-top:4px;font-size:.82rem}
+.detailBack{position:fixed;inset:0;background:#0009;z-index:50;display:flex;align-items:flex-end;justify-content:center;padding:12px}
+.detail{width:min(720px,100%);max-height:90vh;overflow:auto;background:var(--panel);color:var(--fg);border-radius:18px 18px 12px 12px;padding:14px;box-shadow:0 -10px 40px #0008}
+.detailTop{display:grid;grid-template-columns:minmax(120px,190px) 1fr;gap:14px}.detailTop img{width:100%;border-radius:10px;background:#0001}.detail h2{font-size:1.2rem;margin:0 0 5px}.detail table{width:100%;border-collapse:collapse;margin-top:10px;font-size:.82rem}.detail th,.detail td{padding:7px 5px;border-bottom:1px solid var(--line);text-align:left}.detail .close{position:sticky;top:0;float:right;width:auto;margin:0 0 6px 6px}
+.detailActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.detailActions button,.detailActions a{width:auto;margin:0;padding:8px 10px;border-radius:9px;text-decoration:none}
+.hidden{display:none!important}
+@media(max-width:700px){.controls{grid-template-columns:1fr 1fr}.controls #setSearch,.controls #setSelect{grid-column:1/-1}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sethead{align-items:flex-start}.sethead img{max-width:110px}.detailTop{grid-template-columns:115px 1fr}}
 </style>
 </head>
 <body>
@@ -47,6 +54,16 @@ button.sec,.btn.sec{background:var(--panel);color:var(--fg);border:1px solid var
       <select id="game"><option value="poke">Pokémon</option><option value="ygo">Yu-Gi-Oh!</option></select>
       <input id="setSearch" placeholder="Cerca espansione...">
       <select id="setSelect"><option>Caricamento espansioni...</option></select>
+      <select id="setSort" title="Ordina espansioni">
+        <option value="date">Espansioni: data</option>
+        <option value="name">Espansioni: nome</option>
+        <option value="code">Espansioni: codice/serie</option>
+        <option value="price">Espansioni: valore set</option>
+      </select>
+      <select id="setDir" title="Direzione">
+        <option value="desc">Decrescente ↓</option>
+        <option value="asc">Crescente ↑</option>
+      </select>
     </div>
     <div id="status" class="note">Carico il catalogo...</div>
   </div>
@@ -67,6 +84,18 @@ button.sec,.btn.sec{background:var(--panel);color:var(--fg);border:1px solid var
       <button class="sec" data-filter="missing">Mi mancano</button>
       <input id="cardSearch" placeholder="Cerca carta, numero o rarità..." style="flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg)">
     </div>
+    <div class="sorts">
+      <b class="note">Ordina carte:</b>
+      <select id="cardSort">
+        <option value="number">Numero di serie</option>
+        <option value="name">Nome</option>
+        <option value="price">Prezzo</option>
+      </select>
+      <select id="cardDir">
+        <option value="asc">Crescente ↑</option>
+        <option value="desc">Decrescente ↓</option>
+      </select>
+    </div>
   </div>
 
   <div id="cards" class="grid"></div>
@@ -82,9 +111,13 @@ button.sec,.btn.sec{background:var(--panel);color:var(--fg);border:1px solid var
   </div>
 
   <div class="panel note">
-    <b>Fonti catalogo:</b> Pokémon TCG API per Pokémon; YGOPRODeck v7 per Yu-Gi-Oh!. Le immagini Yu-Gi-Oh! vengono memorizzate nella cache del browser per ridurre le richieste ripetute. I prezzi visualizzati nell'album sono solo quelli restituiti dalla fonte per quella stampa, quando disponibili.
+    <b>Fonti catalogo:</b> Pokémon TCG API per Pokémon; YGOPRODeck v7 per Yu-Gi-Oh!. Le immagini vengono memorizzate nella cache del browser quando possibile. Il prezzo di ordinamento usa Cardmarket in EUR per Pokémon quando disponibile, altrimenti TCGplayer in USD; per Yu-Gi-Oh! usa il prezzo della singola stampa restituito da YGOPRODeck. Valute diverse non vengono convertite.
   </div>
 </main>
+
+<div id="detailBack" class="detailBack hidden" role="dialog" aria-modal="true">
+  <div id="detail" class="detail"></div>
+</div>
 <script src="album.js"></script>
 </body>
 </html>
