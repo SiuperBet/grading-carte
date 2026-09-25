@@ -72,7 +72,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
     <div class="feature"><b>💾 Non perdi il lavoro</b>Foto e avanzamento vengono ripristinati dopo un aggiornamento pagina.</div>
   </div>
   <button id="btnStart">Inizia (attiva la fotocamera)</button>
-  <button class="sec hide" id="fbl" type="button" onclick="document.getElementById('file').click()">Camera non disponibile? Scegli una foto</button>
+  <button class="sec hide" id="fbl" type="button" onclick="apriRiconoscimento()">🖼️ Fotocamera bloccata? Continua dalla galleria</button>
   <input id="file" type="file" accept="image/*" capture="environment" class="hide">
   <button class="sec" type="button" onclick="document.getElementById('fileC').click()">Solo centratura: scegli una foto dalla galleria</button>
   <input id="fileC" type="file" accept="image/*" class="hide">
@@ -728,7 +728,7 @@ $('file').onchange=e=>{
 };
 </script>
 <script src="auto-camera.js?v=20260925-3"></script>
-<script src="recognizer.js?v=20260925-4"></script>
+<script src="recognizer.js?v=20260925-5"></script>
 <script src="grading-state.js?v=20260925-3"></script>
 </body>
 </html>
