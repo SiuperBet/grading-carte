@@ -4,7 +4,7 @@
 const state={
   source:null,sourceUrl:null,sourceKind:'front',game:'poke',points:[null,null,null,null],selected:0,
   rectified:null,rectifiedUrl:null,lines:{l:null,r:null,t:null,b:null},lineSel:'l',
-  prevView:null,editingVersion:0,fingerprint:null,autoBusy:false
+  prevView:null,editingVersion:0,fingerprint:null,autoBusy:false,lensMode:'context'
 };
 
 function el(id){return document.getElementById(id)}
@@ -84,7 +84,7 @@ function install(){
 #cent .cc2lens{display:none;width:min(92%,420px);height:auto;aspect-ratio:1/1;margin:10px auto 0;border:3px solid #36e16f;border-radius:16px;background:#000;box-shadow:0 6px 20px #0008}
 #cent .cc2row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}#cent .cc2row button{flex:1;min-width:42%}
 #cent .cc2result{font-size:1.12rem;font-weight:800;line-height:1.5;padding:12px;border-radius:12px;background:#111820;margin:10px 0}
-#cent .cc2help{font-size:.9rem;opacity:.82}
+#cent .cc2help{font-size:.9rem;opacity:.82}#cent .cc2lensModes{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:8px 0}#cent .cc2lensModes button{margin:0;padding:9px 5px;font-size:.88rem}#cent .cc2lensModes .active{outline:2px solid #2f65ff;background:#343b49}
 `;document.head.appendChild(st);
   }
   host.innerHTML=`
@@ -97,7 +97,8 @@ function install(){
   <div id="cc2Astatus" class="cc2status">Carico la foto…</div>
   <div class="cc2corners" id="cc2cornerBtns"></div>
   <div class="cc2wrap"><canvas id="cc2canvasA" class="cc2canvas"></canvas><canvas id="cc2lensA" class="cc2lens" width="720" height="720"></canvas></div>
-  <div class="cc2help">Tocca un angolo e trascinalo sul bordo fisico reale. La foto resta sempre intera. La lente sotto serve solo per la precisione.</div>
+  <div class="cc2lensModes"><button type="button" class="sec active" data-z="context">Contesto</button><button type="button" class="sec" data-z="medium">Medio</button><button type="button" class="sec" data-z="precision">Precisione</button></div>
+  <div class="cc2help"><b>Angoli arrotondati:</b> non puntare sulla curva. Metti il centro dove i due bordi rettilinei, prolungati idealmente, si incontrerebbero. Usa “Contesto” per vedere entrambi i lati.</div>
   <div class="cc2row"><button class="sec" id="cc2Auto">◎ Rileva automaticamente</button><button class="sec" id="cc2Clear">Azzera 4 punti</button></div>
   <button id="cc2Warp" disabled>Raddrizza e passa alla centratura</button>
 </section>
@@ -136,7 +137,7 @@ async function open(url,opts){
   if(!url){alert('Prima carica o scatta una foto della carta.');return}
   state.prevView=visibleView();state.sourceUrl=url;state.sourceKind=opts&&opts.kind||'front';
   hideViews();el('cent').classList.remove('hide');showOnly('A');
-  state.points=[null,null,null,null];state.selected=0;state.rectified=null;state.rectifiedUrl=null;state.lines={l:null,r:null,t:null,b:null};
+  state.points=[null,null,null,null];state.selected=0;state.lensMode='context';state.rectified=null;state.rectifiedUrl=null;state.lines={l:null,r:null,t:null,b:null};
   state.game=(opts&&opts.game)||((el('rgame')&&el('rgame').value==='ygo')?'ygo':'poke');
   el('cc2game').value=state.game;
   setStatus('cc2Astatus','Carico la foto completa…');
@@ -175,10 +176,45 @@ function renderCornerButtons(){
   el('cc2cornerBtns').innerHTML=names.map((n,i)=>'<button type="button" class="sec '+(i===state.selected?'cc2sel':'')+'" data-i="'+i+'">'+(state.points[i]?'✓ ':'')+n+'</button>').join('');
   el('cc2cornerBtns').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.selected=+b.dataset.i;renderCornerButtons();renderA();if(state.points[state.selected])drawLensA(state.points[state.selected])});
 }
+function lensCropSize(){
+  var base=Math.min(state.source.width,state.source.height);
+  if(state.lensMode==='precision')return Math.max(60,base*.085);
+  if(state.lensMode==='medium')return Math.max(100,base*.145);
+  return Math.max(150,base*.24);
+}
+function renderLensModes(){
+  document.querySelectorAll('#cent .cc2lensModes button').forEach(function(b){
+    b.classList.toggle('active',b.dataset.z===state.lensMode);
+  });
+}
+function drawGuideRay(ctx,from,to,sx,sy,S,lw,lh){
+  if(!from||!to)return;
+  var dx=to.x-from.x,dy=to.y-from.y,len=Math.hypot(dx,dy)||1;
+  dx/=len;dy/=len;
+  // estendi la direzione del lato in entrambe le direzioni dentro la lente
+  var L=Math.max(lw,lh)*1.5;
+  var cx=(from.x-sx)/S*lw,cy=(from.y-sy)/S*lh;
+  ctx.beginPath();ctx.moveTo(cx-dx*L,cy-dy*L);ctx.lineTo(cx+dx*L,cy+dy*L);ctx.stroke();
+}
 function drawLensA(p){
-  if(!p)return;const l=el('cc2lensA'),x=l.getContext('2d'),S=Math.max(28,Math.min(state.source.width,state.source.height)*.055);
+  if(!p)return;
+  const l=el('cc2lensA'),x=l.getContext('2d'),S=lensCropSize();
   const sx=clamp(p.x-S/2,0,Math.max(0,state.source.width-S)),sy=clamp(p.y-S/2,0,Math.max(0,state.source.height-S));
-  x.clearRect(0,0,l.width,l.height);x.drawImage(state.source,sx,sy,S,S,0,0,l.width,l.height);x.strokeStyle='#2ee66b';x.lineWidth=3;x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();x.fillStyle='#ffd322';x.beginPath();x.arc(l.width/2,l.height/2,7,0,Math.PI*2);x.fill();l.style.display='block';
+  x.clearRect(0,0,l.width,l.height);
+  x.drawImage(state.source,sx,sy,S,S,0,0,l.width,l.height);
+
+  // Guide nella direzione dei due lati adiacenti: aiutano sugli angoli arrotondati.
+  const prev=(state.selected+3)%4,next=(state.selected+1)%4;
+  x.save();x.strokeStyle='rgba(255,211,34,.95)';x.lineWidth=3;x.setLineDash([14,10]);
+  if(state.points[prev])drawGuideRay(x,p,state.points[prev],sx,sy,S,l.width,l.height);
+  if(state.points[next])drawGuideRay(x,p,state.points[next],sx,sy,S,l.width,l.height);
+  x.restore();
+
+  // Croce centrale: è il punto teorico di intersezione.
+  x.strokeStyle='#2ee66b';x.lineWidth=3;x.setLineDash([]);
+  x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();
+  x.fillStyle='#ffd322';x.beginPath();x.arc(l.width/2,l.height/2,7,0,Math.PI*2);x.fill();
+  l.style.display='block';
 }
 function hideLensA(){el('cc2lensA').style.display='none'}
 
@@ -463,6 +499,14 @@ function close(){
 }
 function bind(){
   bindA();bindB();
+  document.querySelectorAll('#cent .cc2lensModes button').forEach(function(b){
+    b.onclick=function(){
+      state.lensMode=b.dataset.z||'context';
+      renderLensModes();
+      if(state.points[state.selected])drawLensA(state.points[state.selected]);
+    };
+  });
+  renderLensModes();
   el('cc2game').onchange=()=>{state.game=el('cc2game').value;state.points=[null,null,null,null];state.rectified=null;state.lines={l:null,r:null,t:null,b:null};state.editingVersion++;renderCornerButtons();renderA();setStatus('cc2Astatus','Tipo carta cambiato: riposiziona i 4 angoli oppure usa il rilevamento automatico.');}
   el('cc2Auto').onclick=()=>autoDetect(true);
   el('cc2Clear').onclick=()=>{state.points=[null,null,null,null];state.selected=0;state.editingVersion++;renderCornerButtons();renderA();setStatus('cc2Astatus','Punti azzerati. Tocca i quattro angoli fisici della carta.')};
