@@ -304,7 +304,7 @@ async function rifai(k){
   try{await apriCamera()}catch(e){$('msg').textContent='Fotocamera non disponibile ('+e.name+').';$('msg').classList.remove('hide')}
 }
 // ---- FASE 4 (v3): visore con zoom, spostamento e lente grande ----
-const PX=12; // punti per mm nella carta raddrizzata
+const PX=5; // punti per mm: sufficiente per la stima e molto più leggero su smartphone
 let WK=null,PTS=[null,null,null,null],TG=0,RC=null,LN={},TB=0,DIM={w:63,h:88};
 const CORN=['alto sinistra','alto destra','basso destra','basso sinistra'];
 const TARGETS=[
@@ -392,7 +392,7 @@ function apriCent(url){
   if(!url){alert('Questa foto non c\u2019è ancora.');return}
   const im=new Image();
   im.onload=async()=>{
-    const s=Math.min(1,1400/Math.max(im.naturalWidth,im.naturalHeight));
+    const s=Math.min(1,850/Math.max(im.naturalWidth,im.naturalHeight));
     WK=document.createElement('canvas');WK.width=Math.round(im.naturalWidth*s);WK.height=Math.round(im.naturalHeight*s);
     WK.getContext('2d').drawImage(im,0,0,WK.width,WK.height);
     PTS=[null,null,null,null];TG=0;LN={};TB=0;
@@ -403,25 +403,21 @@ function apriCent(url){
       window.__galleryCenterOnce=false;window.__galleryCropFound=false;
       const [gw,gh]=$('gioco').value.split(',').map(Number);DIM={w:gw,h:gh};
 
+      // Da galleria non eseguiamo più rilevamenti pesanti né saltiamo direttamente ai bordi.
+      // Se il ritaglio rapido ha isolato la carta, preimpostiamo i 4 angoli ai bordi dell'immagine.
       if(cropped){
-        // Il ritaglio rapido ha già isolato la carta: niente OpenCV e niente omografia pesante.
-        RC=WK;LN={};TB=0;
-        $('stA').classList.add('hide');$('stB').classList.remove('hide');
-        vaiB();
-        let autoB=null;
-        if(window.AutoCardVision){
-          try{autoB=AutoCardVision.detectBorders(RC,DIM,PX);if(autoB&&autoB.lines)LN=autoB.lines}catch(e){}
-        }
-        dB();
-        if(autoB&&autoB.lines){
-          $('hB').textContent='✓ Carta già isolata dalla galleria. Ho proposto i bordi; controllali e correggili se serve.';
-          risultato();
-        }else{
-          $('hB').textContent='Carta isolata. Segna o correggi i bordi senza altri calcoli automatici.';
-        }
+        const m=Math.max(2,Math.round(Math.min(WK.width,WK.height)*.006));
+        PTS=[
+          {x:m,y:m},
+          {x:WK.width-m,y:m},
+          {x:WK.width-m,y:WK.height-m},
+          {x:m,y:WK.height-m}
+        ];
+        TG=0;vaiA();dA();
+        $('hA').textContent='✓ Carta isolata. Ho preimpostato i 4 angoli: controllali e correggili se serve, poi premi “Raddrizza”.';
       }else{
         vaiA();
-        $('hA').textContent='Foto da galleria: rilevamento pesante disattivato per evitare blocchi. Posiziona manualmente i 4 angoli e poi premi Raddrizza.';
+        $('hA').textContent='Foto caricata. Posiziona i 4 angoli della carta e poi premi “Raddrizza”. Nessun calcolo pesante viene eseguito durante il trascinamento.';
       }
       return;
     }
@@ -491,32 +487,65 @@ function convesso(p){
   }
   return true;
 }
+function affineTri(src,dst){
+  const x0=src[0].x,y0=src[0].y,x1=src[1].x,y1=src[1].y,x2=src[2].x,y2=src[2].y;
+  const u0=dst[0].x,v0=dst[0].y,u1=dst[1].x,v1=dst[1].y,u2=dst[2].x,v2=dst[2].y;
+  const det=x0*(y1-y2)+x1*(y2-y0)+x2*(y0-y1);
+  if(Math.abs(det)<1e-6)return null;
+  return {
+    a:(u0*(y1-y2)+u1*(y2-y0)+u2*(y0-y1))/det,
+    c:(u0*(x2-x1)+u1*(x0-x2)+u2*(x1-x0))/det,
+    e:(u0*(x1*y2-x2*y1)+u1*(x2*y0-x0*y2)+u2*(x0*y1-x1*y0))/det,
+    b:(v0*(y1-y2)+v1*(y2-y0)+v2*(y0-y1))/det,
+    d:(v0*(x2-x1)+v1*(x0-x2)+v2*(x1-x0))/det,
+    f:(v0*(x1*y2-x2*y1)+v1*(x2*y0-x0*y2)+v2*(x0*y1-x1*y0))/det
+  };
+}
+function drawMappedTriangle(ctx,img,src,dst){
+  const m=affineTri(src,dst);if(!m)return false;
+  ctx.save();
+  ctx.beginPath();ctx.moveTo(dst[0].x,dst[0].y);ctx.lineTo(dst[1].x,dst[1].y);ctx.lineTo(dst[2].x,dst[2].y);ctx.closePath();ctx.clip();
+  ctx.setTransform(m.a,m.b,m.c,m.d,m.e,m.f);
+  ctx.drawImage(img,0,0);
+  ctx.restore();
+  return true;
+}
 function raddrizza(){
-  if(!convesso(PTS)){$('hA').textContent='I 4 punti non formano un quadrilatero valido. Controlla l\u2019ordine: alto sinistra, alto destra, basso destra, basso sinistra.';return}
-  const[gw,gh]=$('gioco').value.split(',').map(Number);DIM={w:gw,h:gh};
-  const M=4*PX,CW=gw*PX,CH=gh*PX,DW=CW+2*M,DH=CH+2*M;
-  const h=omografia([{x:M,y:M},{x:M+CW,y:M},{x:M+CW,y:M+CH},{x:M,y:M+CH}],PTS);
-  if(!h){$('hA').textContent='Non riesco a raddrizzare con questi punti. Riprova a segnarli.';return}
-  const W=WK.width,H=WK.height,sd=WK.getContext('2d').getImageData(0,0,W,H).data;
-  RC=document.createElement('canvas');RC.width=DW;RC.height=DH;
-  const rc=RC.getContext('2d'),out=rc.createImageData(DW,DH),o=out.data;
-  for(let y=0;y<DH;y++)for(let x=0;x<DW;x++){
-    const w=h[6]*x+h[7]*y+1,u=(h[0]*x+h[1]*y+h[2])/w,v=(h[3]*x+h[4]*y+h[5])/w,i=(y*DW+x)*4;
-    o[i+3]=255;
-    if(u<0||v<0||u>=W-1||v>=H-1){o[i]=o[i+1]=o[i+2]=40;continue}
-    const x0=u|0,y0=v|0,fx=u-x0,fy=v-y0,a=(y0*W+x0)*4;
-    for(let k=0;k<3;k++)o[i+k]=sd[a+k]*(1-fx)*(1-fy)+sd[a+4+k]*fx*(1-fy)+sd[a+W*4+k]*(1-fx)*fy+sd[a+W*4+4+k]*fx*fy;
+  if(!PTS.every(Boolean)||!convesso(PTS)){
+    $('hA').textContent='Controlla i 4 angoli: alto sinistra, alto destra, basso destra, basso sinistra.';
+    return;
   }
-  rc.putImageData(out,0,0);
+  const [gw,gh]=$('gioco').value.split(',').map(Number);DIM={w:gw,h:gh};
+  const M=3*PX,CW=gw*PX,CH=gh*PX,DW=Math.round(CW+2*M),DH=Math.round(CH+2*M);
+  const d0={x:M,y:M},d1={x:M+CW,y:M},d2={x:M+CW,y:M+CH},d3={x:M,y:M+CH};
+
+  RC=document.createElement('canvas');RC.width=DW;RC.height=DH;
+  const rc=RC.getContext('2d');
+  rc.fillStyle='#282828';rc.fillRect(0,0,DW,DH);
+  rc.imageSmoothingEnabled=true;rc.imageSmoothingQuality='high';
+
+  // Due triangoli: niente ciclo su centinaia di migliaia di pixel.
+  const ok1=drawMappedTriangle(rc,WK,[PTS[0],PTS[1],PTS[2]],[d0,d1,d2]);
+  const ok2=drawMappedTriangle(rc,WK,[PTS[0],PTS[2],PTS[3]],[d0,d2,d3]);
+  if(!ok1||!ok2){
+    $('hA').textContent='Non riesco a raddrizzare con questi punti. Correggi i quattro angoli.';
+    return;
+  }
+
   LN={};TB=0;
   let autoB=null;
   if(window.AutoCardVision){
-    try{autoB=AutoCardVision.detectBorders(RC,DIM,PX);if(autoB&&autoB.lines)LN=autoB.lines}catch(e){}
+    try{
+      autoB=AutoCardVision.detectBorders(RC,DIM,PX);
+      if(autoB&&autoB.lines&&autoB.confidence>=.50)LN=autoB.lines;
+    }catch(e){}
   }
   vaiB();
-  if(autoB&&autoB.lines){
-    $('hB').textContent='✓ Bordi proposti automaticamente'+(autoB.confidence>=.35?' con buona evidenza.':' . Controllali: il contrasto non è molto forte.')+' Tocca una linea per correggerla.';
+  if(autoB&&autoB.lines&&autoB.confidence>=.50){
+    $('hB').textContent='✓ Bordi individuati con buona evidenza. Controlla le linee e correggile se necessario.';
     risultato();
+  }else{
+    $('hB').textContent='Carta raddrizzata. Il bordo automatico non è abbastanza sicuro: posiziona le linee manualmente.';
   }
 }
 
@@ -844,8 +873,8 @@ $('file').onchange=e=>{
   im.src=URL.createObjectURL(f);e.target.value='';
 };
 </script>
-<script src="auto-camera.js?v=20260925-9"></script>
-<script src="recognizer.js?v=20260925-9"></script>
-<script src="grading-state.js?v=20260925-9"></script>
+<script src="auto-camera.js?v=20260925-10"></script>
+<script src="recognizer.js?v=20260925-10"></script>
+<script src="grading-state.js?v=20260925-10"></script>
 </body>
 </html>
