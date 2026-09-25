@@ -110,27 +110,42 @@ function pokeScore(c,titles,collector,ocr){
   return best;
 }
 async function findPokemon(top,bottom){
-  var all=top+'\n'+bottom,titles=titleCandidates(top),col=parsePokemon(bottom,all),arr=[];
-  if(col.number){
-    var nums=[col.number,String(parseInt(col.number,10)||col.number)].filter(function(x,i,a){return x&&a.indexOf(x)===i});
-    for(var i=0;i<nums.length&&!arr.length;i++){
+  var all=top+'\n'+bottom,titles=titleCandidates(top),col=parsePokemon(bottom,all),briefs=[];
+  try{
+    if(col.number&&window.tcgDexSearchPokemonBriefs){
+      briefs=await window.tcgDexSearchPokemonBriefs('',{number:col.number,page:1,pageSize:80})||[];
+    }
+    if(!briefs.length&&titles.length&&window.tcgDexSearchPokemonBriefs){
+      for(var k=0;k<Math.min(3,titles.length)&&!briefs.length;k++){
+        try{briefs=await window.tcgDexSearchPokemonBriefs(titles[k],{page:1,pageSize:80})||[]}catch(e){}
+      }
+    }
+  }catch(e){}
+
+  if(!briefs.length||!window.tcgDexFetchLegacyCard){
+    return {cards:[],det:{titles:titles,collector:col}};
+  }
+
+  var scored=briefs.map(function(b){
+    var best=0;
+    titles.forEach(function(t){best=Math.max(best,dice(b.name,t))});
+    if(col&&col.number&&String(b.localId||'').replace(/^0+/,'').toLowerCase()===String(col.number).replace(/^0+/,'').toLowerCase())best+=.65;
+    return {brief:b,score:best};
+  }).sort(function(a,b){return b.score-a.score}).slice(0,24);
+
+  var queue=scored.slice(),full=[];
+  async function worker(){
+    while(queue.length){
+      var x=queue.shift();
       try{
-        var q='number:'+nums[i],j=await fjson('https://api.pokemontcg.io/v2/cards?q='+encodeURIComponent(q)+'&pageSize=100');
-        arr=j.data||[];
+        var card=await window.tcgDexFetchLegacyCard(x.brief.id);
+        if(card)full.push({card:card,score:pokeScore(card,titles,col,all)});
       }catch(e){}
     }
   }
-  if(!arr.length&&titles.length){
-    for(var k=0;k<Math.min(3,titles.length)&&!arr.length;k++){
-      try{
-        var j2=await fjson('https://api.pokemontcg.io/v2/cards?q='+encodeURIComponent('name:'+titles[k]+'*')+'&pageSize=100');
-        arr=j2.data||[];
-      }catch(e){}
-    }
-  }
-  arr=arr.map(function(c){return {card:c,score:pokeScore(c,titles,col,all)}})
-    .sort(function(a,b){return b.score-a.score}).slice(0,18).map(function(x){return x.card});
-  return {cards:arr,det:{titles:titles,collector:col}};
+  await Promise.all([worker(),worker(),worker(),worker(),worker(),worker()]);
+  full.sort(function(a,b){return b.score-a.score});
+  return {cards:full.slice(0,18).map(function(x){return x.card}),det:{titles:titles,collector:col}};
 }
 function ygoScore(c,titles,setCode,ocr){
   var best=0;titles.forEach(function(t){best=Math.max(best,dice(c.name,t))});best=Math.max(best,dice(c.name,ocr)*.8);
