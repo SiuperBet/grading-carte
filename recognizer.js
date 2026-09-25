@@ -5,6 +5,7 @@ var recResults=[];
 var recUrl=null;
 var recMatchedSetCode=null;
 var recBusy=false;
+var recPhotoSaved=false;
 var TESS_URL='https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js';
 
 function rq(id){return document.getElementById(id)}
@@ -89,20 +90,40 @@ function wholeForOCR(im){
 function cleanOcrLine(s){
   return String(s||'').replace(/[|{}\[\]<>_=~]/g,' ')
     .replace(/\b(?:HP|PS|PV)\s*\d{1,4}\b/ig,' ')
+    .replace(/\b\d{1,4}\s*(?:HP|PS|PV)\b/ig,' ')
     .replace(/^\s*[#*•·]+/,'').replace(/\s+/g,' ').trim();
 }
 function titleCandidates(text){
   var bad=/^(basic|stage|trainer|energy|pokemon|pokémon|ability|weakness|resistance|retreat|illustrator)$/i;
-  return String(text||'').split(/\r?\n/).map(cleanOcrLine).filter(function(s){
+  var out=[];
+  String(text||'').split(/\r?\n/).forEach(function(raw){
+    var s=cleanOcrLine(raw)
+      .replace(/\b(?:LV\.?\s*\d+|LEVEL\s*\d+)\b/ig,' ')
+      .replace(/\s+/g,' ').trim();
     var words=s.match(/[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’.-]*/g)||[];
     var letters=(s.match(/[A-Za-zÀ-ÿ]/g)||[]).length;
-    var useful=words.some(function(w){return w.replace(/[^A-Za-zÀ-ÿ]/g,'').length>=3});
-    return s.length>=4&&s.length<=48&&letters>=4&&letters/s.length>.48&&useful&&!bad.test(s);
-  }).sort(function(a,b){
-    // I nomi carta stanno quasi sempre nella prima riga utile e sono relativamente brevi.
-    var wa=(a.match(/[A-Za-zÀ-ÿ]/g)||[]).length,wb=(b.match(/[A-Za-zÀ-ÿ]/g)||[]).length;
-    return (Math.abs(18-wa)-Math.abs(18-wb))||a.length-b.length;
-  }).slice(0,8);
+    if(s.length<4||s.length>56||letters<4||letters/Math.max(1,s.length)<.42||bad.test(s))return;
+    out.push(s);
+
+    // OCR spesso legge "TEAM MAGMA'S Houndoom 70 HP" come un'unica riga:
+    // crea sotto-frasi plausibili, ma senza inventare nomi.
+    if(words.length>=2&&words.length<=7){
+      for(var len=Math.min(4,words.length);len>=1;len--){
+        for(var st=0;st+len<=words.length;st++){
+          var q=words.slice(st,st+len).join(' ');
+          if(q.length>=4&&!bad.test(q))out.push(q);
+        }
+      }
+    }
+  });
+  out=out.filter(function(x,i,a){return a.indexOf(x)===i});
+  out.sort(function(a,b){
+    var aw=(a.match(/[A-Za-zÀ-ÿ]/g)||[]).length,bw=(b.match(/[A-Za-zÀ-ÿ]/g)||[]).length;
+    var ap=/^(team\s+(?:magma|aqua)'?s\b)/i.test(a)?-.35:0;
+    var bp=/^(team\s+(?:magma|aqua)'?s\b)/i.test(b)?-.35:0;
+    return (Math.abs(18-aw)+ap)-(Math.abs(18-bw)+bp)||a.length-b.length;
+  });
+  return out.slice(0,12);
 }
 function fixDigitish(s){
   return String(s||'').replace(/[Oo]/g,'0').replace(/[Il|!]/g,'1').replace(/[Ss]/g,'5').replace(/\s+/g,'');
@@ -321,7 +342,7 @@ async function findPokemon(top,bottom,middle,footer){
     }
     enriched.sort(function(a,b){return b.score-a.score});
     var bestExact=enriched.length?enriched[0].score:0;
-    enriched=enriched.filter(function(x,i){return i<5&&x.score>=bestExact-.38});
+    enriched=enriched.filter(function(x,i){return i<3&&x.score>=bestExact-.34});
     return {cards:enriched.map(function(x){return x.card}),det:{titles:titles,collector:col,attacks:attacks,year:year,method:'numero/set'}};
   }
 
@@ -335,6 +356,8 @@ async function findPokemon(top,bottom,middle,footer){
       enrichedAtk.push({card:ec,score:byAtk[j].score});
     }
     enrichedAtk.sort(function(a,b){return b.score-a.score});
+    var bestAtk=enrichedAtk.length?enrichedAtk[0].score:0;
+    enrichedAtk=enrichedAtk.filter(function(x,i){return i<3&&x.score>=bestAtk-.20});
     return {cards:enrichedAtk.map(function(x){return x.card}),det:{titles:titles,collector:col,attacks:attacks,year:year,method:'attacchi/anno'}};
   }
 
@@ -378,7 +401,7 @@ async function findPokemon(top,bottom,middle,footer){
   full.sort(function(a,b){return b.score-a.score});
   var bestFull=full.length?full[0].score:0;
   full=full.filter(function(x,i){
-    if(i>=8)return false;
+    if(i>=3)return false;
     if(col.number&&numKey(x.card.number)===numKey(col.number))return true;
     return x.score>=.62&&x.score>=bestFull-.24;
   });
@@ -416,14 +439,14 @@ async function findYgo(top,bottom){
     }
   }
   arr=arr.map(function(c){return {card:c,score:ygoScore(c,titles,id.setCode,all)}})
-    .sort(function(a,b){return b.score-a.score}).slice(0,18).map(function(x){return x.card});
+    .sort(function(a,b){return b.score-a.score}).slice(0,3).map(function(x){return x.card});
   return {cards:arr,det:{titles:titles,id:id}};
 }
 function renderResults(game,data,top,bottom){
-  recResults=data.cards||[];
+  recResults=(data.cards||[]).slice(0,3);
   var e=rq('rresults');
   if(!recResults.length){
-    e.innerHTML='<div class="msg"><b>Nessuna corrispondenza abbastanza utile.</b><br>Puoi correggere sotto il nome/numero letto e lanciare la ricerca normale.</div>';
+    e.innerHTML='<div class="msg"><b>Nessuna corrispondenza abbastanza affidabile.</b><br>Non mostro risultati casuali. Puoi riprovare la foto/allineamento; la correzione manuale resta solo come opzione avanzata.</div>';
     fillManual(game,data,top,bottom);return;
   }
   var a=albumData();
@@ -484,8 +507,10 @@ async function recognize(src){
     var im=await loadImage(ocrSource),game=rq('rgame').value;
 
     var topA=cropBoxForOCR(im,.015,.01,.985,.18,'normal');
+    var topB=cropBoxForOCR(im,.035,.015,.84,.155,'threshold');
     var middle=cropBoxForOCR(im,.02,.48,.98,.84,'normal');
     var numA=cropBoxForOCR(im,.66,.88,.998,.998,'number');
+    var numD=cropBoxForOCR(im,.76,.895,.995,.985,'threshold');
     var numB=cropBoxForOCR(im,.66,.88,.998,.998,'threshold');
     var numC=cropBoxForOCR(im,.66,.88,.998,.998,'thresholdInv');
     var footer=cropBoxForOCR(im,.02,.86,.98,.998,'normal');
@@ -495,8 +520,9 @@ async function recognize(src){
     var worker=await Tesseract.createWorker('eng');
     try{
       await worker.setParameters({tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
-      setStatus('Leggo il nome…');
+      setStatus('Leggo il nome con due controlli…');
       var a=await worker.recognize(topA);
+      var a2=await worker.recognize(topB);
 
       await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
       setStatus('Leggo gli attacchi…');
@@ -511,6 +537,7 @@ async function recognize(src){
       var n1=await worker.recognize(numA);
       var n2=await worker.recognize(numB);
       var n3=await worker.recognize(numC);
+      var n4=await worker.recognize(numD);
 
       await worker.setParameters({
         tessedit_pageseg_mode:'6',
@@ -520,9 +547,9 @@ async function recognize(src){
       setStatus('Leggo anno e dati in fondo…');
       var ft=await worker.recognize(footer);
 
-      var topText=a&&a.data&&a.data.text||'';
+      var topText=[a&&a.data&&a.data.text||'',a2&&a2.data&&a2.data.text||''].join('\n');
       var middleText=m&&m.data&&m.data.text||'';
-      var bottomText=[n1&&n1.data&&n1.data.text||'',n2&&n2.data&&n2.data.text||'',n3&&n3.data&&n3.data.text||''].join('\n');
+      var bottomText=[n1&&n1.data&&n1.data.text||'',n2&&n2.data&&n2.data.text||'',n3&&n3.data&&n3.data.text||'',n4&&n4.data&&n4.data.text||''].join('\n');
       var footerText=ft&&ft.data&&ft.data.text||'';
 
       var parsed=game==='poke'?parsePokemon(bottomText+'\n'+footerText,[topText,middleText,bottomText,footerText].join('\n')):null;
@@ -557,7 +584,7 @@ async function recognize(src){
 
       if(recResults.length){
         var method=data.det&&data.det.method?' · metodo '+data.det.method:'';
-        setStatus('Trovate '+recResults.length+' possibili corrispondenze'+method+'. Controlla immagine, espansione e numero.');
+        setStatus('Riconoscimento completato: '+recResults.length+' candidato'+(recResults.length===1?'':'i')+' su un massimo di 3'+method+'. Controlla immagine, espansione e numero.');
       }else{
         setStatus('Non ho trovato una corrispondenza affidabile nemmeno con la seconda lettura completa. Non seleziono automaticamente una carta sbagliata.',true);
       }
@@ -570,8 +597,17 @@ window.apriRiconoscimento=function(src){
   ['start','fine','cap','cent','prezzo'].forEach(function(id){var x=rq(id);if(x)x.classList.add('hide')});
   rq('riconosci').classList.remove('hide');rq('rresults').innerHTML='';rq('rstatus').classList.add('hide');
   rq('rfront').style.display=(typeof foto!=='undefined'&&foto[0])?'':'none';
-  if(recUrl){rq('rpreview').src=recUrl;rq('rpreviewWrap').style.display='';rq('rphotoActions').classList.remove('hide');setTimeout(drawRecognizerDetection,50)}
-  if(src)recognize(src);
+  if(src){
+    recUrl=src;
+    recPhotoSaved=!!(typeof foto!=='undefined'&&foto[0]===src);
+    rq('rpreview').src=recUrl;rq('rpreviewWrap').style.display='';rq('rphotoActions').classList.remove('hide');
+    updateRecognizerPhotoButtons();
+    // Se è una foto già allineata/nota, il riconoscimento può partire; altrimenti il pulsante guiderà all'allineamento.
+    if(recPhotoSaved)recOcrUrl=src;
+  }else if(recUrl){
+    rq('rpreview').src=recUrl;rq('rpreviewWrap').style.display='';rq('rphotoActions').classList.remove('hide');updateRecognizerPhotoButtons();
+  }
+  if(src&&recOcrUrl)recognize(recOcrUrl);
 }
 window.esciRiconoscimento=function(){
   rq('riconosci').classList.add('hide');
@@ -829,6 +865,39 @@ function chooseDetection(custom,cvd,w,h){
   return {found:true,points:one.points,width:w,height:h,confidence:Math.min(.64,one.confidence||.45),outerVerified:false,consensus:false};
 }
 
+function updateRecognizerPhotoButtons(){
+  var s=rq('rSavePhotoBtn'),d=rq('rDeletePhotoBtn');
+  if(s){
+    s.disabled=!recUrl||recPhotoSaved;
+    s.textContent=recPhotoSaved?'✓ Foto salvata':'💾 Salva foto';
+  }
+  if(d)d.disabled=!recUrl;
+}
+window.salvaFotoRiconoscimento=async function(){
+  if(!recUrl){setStatus('Nessuna foto da salvare.',true);return}
+  try{
+    if(typeof foto!=='undefined')foto[0]=recUrl;
+    if(window.GradingPersist){
+      await GradingPersist.savePhoto(0,recUrl);
+      GradingPersist.saveMeta();
+    }
+    recPhotoSaved=true;updateRecognizerPhotoButtons();
+    setStatus('✓ Foto salvata sul dispositivo come fronte della sessione.');
+  }catch(e){setStatus('Salvataggio foto non riuscito: '+e.message,true)}
+};
+window.eliminaFotoRiconoscimento=async function(){
+  if(!recUrl)return;
+  if(recPhotoSaved&&!confirm('Eliminare questa foto salvata dalla sessione?'))return;
+  try{
+    if(typeof foto!=='undefined')foto[0]=null;
+    if(window.GradingPersist&&GradingPersist.deletePhoto)await GradingPersist.deletePhoto(0);
+  }catch(e){}
+  recUrl=null;recOcrUrl=null;recOriginalCanvas=null;recDetection=null;recCropFound=false;recResults=[];recPhotoSaved=false;
+  rq('rpreview').removeAttribute('src');rq('rpreviewWrap').style.display='none';
+  rq('rphotoActions').classList.add('hide');rq('rresults').innerHTML='';rq('rocr').value='';rq('rmanual').value='';
+  updateRecognizerPhotoButtons();
+  setStatus('Foto eliminata. Scattane o scegline un’altra.');
+};
 async function prepareImportedPhoto(file,source){
   if(!file)return;
   setStatus(source==='gallery'?'Carico la foto dalla galleria…':'Carico la foto scattata…');
@@ -844,26 +913,13 @@ async function prepareImportedPhoto(file,source){
     recUrl=recOriginalCanvas.toDataURL('image/jpeg',.90);
     recOcrUrl=null;
 
-    try{
-      if(typeof foto!=='undefined'){
-        foto[0]=recUrl;
-        if(typeof i==='number'&&i===0)i=1;
-        setTimeout(function(){
-          try{
-            if(window.GradingPersist){
-              GradingPersist.savePhoto(0,recUrl);
-              GradingPersist.saveMeta();
-            }
-          }catch(e){}
-        },180);
-      }
-    }catch(e){}
-
+    recPhotoSaved=false;
     rq('rpreview').src=recUrl;rq('rpreviewWrap').style.display='';
+    updateRecognizerPhotoButtons();
     var ov=rq('rDetectOverlay');if(ov){var oc=ov.getContext('2d');oc.clearRect(0,0,ov.width,ov.height)}
     await yieldPaint();
 
-    setStatus('✓ Foto acquisita senza tagli. Per la massima precisione usa “Apri centratura”: il nuovo flusso conferma i 4 angoli, raddrizza la carta e misura la centratura senza modificare l’originale.');
+    setStatus('✓ Foto acquisita senza tagli. Non è ancora salvata: puoi salvarla o eliminarla. Per il riconoscimento automatico, allinea la carta e poi l’app cercherà da sola fino a 3 candidati.');
   }catch(e){
     setStatus('Non riesco a caricare questa foto: '+(e&&e.message?e.message:'errore sconosciuto'),true);
   }
@@ -905,17 +961,7 @@ window.usaFotoImportataPerCentratura=function(){
   }catch(e){setStatus('Non riesco ad aprire la centratura: '+e.message,true)}
 }
 window.usaFotoImportataComeFronte=function(){
-  if(!recUrl){setStatus('Prima scegli una foto.',true);return}
-  try{
-    if(typeof foto!=='undefined'){
-      foto[0]=recUrl;
-      setStatus('✓ Questa foto è già il fronte della sessione ed è stata salvata automaticamente.');
-      rq('rfront').style.display='';
-      setTimeout(function(){
-        try{if(window.GradingPersist)GradingPersist.savePhoto(0,recUrl)}catch(e){}
-      },300);
-    }
-  }catch(e){setStatus('Salvataggio fronte non riuscito: '+e.message,true)}
+  return window.salvaFotoRiconoscimento();
 }
 rq('rgame').addEventListener('change',function(){
   rq('rresults').innerHTML='';
