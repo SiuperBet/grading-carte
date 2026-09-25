@@ -35,9 +35,9 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 .pan label{display:block;font-size:.85rem;margin-top:6px}
 .pan input[type=range]{width:100%}
 .ris{font-size:1.1rem;font-weight:600}
-.wrap{position:relative;margin-top:8px}
-.tt{touch-action:none;width:100%;aspect-ratio:3/4;display:block;border-radius:8px;background:#111}
-.lp{position:absolute;width:190px;height:190px;border:3px solid #0f0;border-radius:50%;display:none;pointer-events:none;background:#000;z-index:5}
+.wrap{position:relative;margin-top:8px;display:flex;flex-direction:column;align-items:center;gap:7px;background:#0b0c0f;border-radius:12px;padding:6px;overflow:hidden}
+.tt{touch-action:none;display:block;max-width:100%;max-height:62vh;width:auto;height:auto;border-radius:8px;background:#111;margin:0 auto}
+.lp{position:relative;width:148px;height:148px;border:2px solid #0f0;border-radius:16px;display:none;pointer-events:none;background:#000;z-index:5;align-self:center;box-shadow:0 4px 18px #0008}
 .vb{display:flex;gap:6px;margin-top:6px}
 .vb button{flex:1;width:auto;margin:0;padding:10px 4px;font-size:.85rem}
 .chb{width:auto;display:inline-block;padding:6px 10px;font-size:.8rem;margin:3px 3px 0 0}
@@ -47,14 +47,14 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 .pr span{font-size:.9rem}
 .ptable{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}.ptable th,.ptable td{padding:6px 5px;border-bottom:1px solid #8883;text-align:left;vertical-align:top}.ptable th{font-size:.75rem;opacity:.72}.pbox{background:var(--card);padding:10px;border-radius:9px;margin-top:9px}.pactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pactions a,.pactions button{width:auto;margin:0;padding:8px 10px;font-size:.78rem}.plink{display:inline-block;background:var(--card);color:var(--fg);border-radius:8px;padding:7px 9px;text-decoration:none;border:1px solid #8883}.mini{width:auto;padding:5px 7px;margin:0;font-size:.72rem}.rpreviewWrap{position:relative;width:100%;margin-top:8px;background:#090a0d;border-radius:12px;overflow:hidden}.rprev{display:block;width:100%;height:auto;max-height:560px;object-fit:contain;background:#090a0d;border-radius:10px;margin:0 auto}.rDetectOverlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.detectLegend{font-size:.8rem;margin-top:6px;opacity:.78}.uploadGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.uploadBtn{display:flex;align-items:center;justify-content:center;text-align:center;font:inherit;padding:12px 16px;border-radius:10px;background:var(--soft);color:var(--fg);border:1px solid var(--line);min-height:52px;cursor:pointer}.uploadBtn:active{transform:scale(.99)}.photoActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.photoActions button{width:auto;flex:1;min-width:140px}.rmanual{display:flex;gap:6px;margin-top:8px}.rmanual input{flex:1;min-width:0;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884;background:var(--bg);color:var(--fg)}.hide{display:none}
 #restoreMsg{border-left:4px solid var(--ok)}
-@media(max-width:700px){body{padding-inline:10px}.apphead{padding-top:12px}.featuregrid{grid-template-columns:1fr}.topactions{width:100%}.topactions button{flex:1}.vb{flex-wrap:wrap}.vb button{min-width:45%}.ptable{display:block;overflow-x:auto;white-space:nowrap}}
+@media(max-width:700px){body{padding-inline:10px}.apphead{padding-top:12px}.featuregrid{grid-template-columns:1fr}.topactions{width:100%}.topactions button{flex:1}.vb{flex-wrap:wrap}.vb button{min-width:45%}.ptable{display:block;overflow-x:auto;white-space:nowrap}.tt{max-height:58vh}.lp{width:132px;height:132px}}
 </style>
 </head>
 <body>
 <header class="apphead">
   <div>
     <h1>📸 Card Lab</h1>
-    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione · <span style="opacity:.65">Build 2026.09.25.14</span></div>
+    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione · <span style="opacity:.65">Build 2026.09.25.15</span></div>
   </div>
   <div class="topactions">
     <button class="sec" onclick="location.href='album.html'">📚 Album</button>
@@ -163,9 +163,9 @@ video{width:100%;height:100%;object-fit:contain;display:block}
   <h2 style="margin:4px 0">Centratura</h2>
 
   <div id="stA">
-    <div class="msg"><b>Passo 1 · Allineamento automatico.</b> Provo prima a trovare da solo i quattro angoli e a raddrizzare la carta. Se il rilevamento non è affidabile, puoi correggere i punti manualmente con la lente.<br><br><br><br>
-    <b>Per muoverti nella foto:</b> con <b>due dita</b> ingrandisci (pizzica) e sposti la vista, in qualsiasi momento, anche con un punto già selezionato. Oppure usa i tasti ＋ − e ✋ qui sotto.<br><br>
-    Punta dove i due bordi dritti si incontrerebbero, anche se l'angolo è arrotondato. Per scorrere la pagina, tocca fuori dalla foto.</div>
+    <div class="msg"><b>Passo 1 · I 4 angoli della carta.</b> La foto resta sempre completa: il sistema propone i quattro bordi senza tagliare nulla. Correggi solo i punti che non coincidono con il <b>bordo esterno reale</b> della carta.<br><br>
+    <b>Vista intera:</b> quando scegli un angolo vedrai automaticamente tutta la foto. Se vuoi rifinire puoi usare ＋, − o pizzicare con due dita; la lente compare <b>sotto</b> la foto e non copre più la carta.<br><br>
+    Punta dove i due bordi dritti si incontrerebbero, anche se l'angolo è arrotondato.</div>
     <label style="display:block;margin-top:8px">Tipo di carta
       <select id="gioco" style="font:inherit;padding:6px"><option value="63,88">Pokémon (63×88 mm)</option><option value="59,86">Yu-Gi-Oh (59×86 mm)</option></select>
     </label>
@@ -328,7 +328,14 @@ const mkV=(cv,lp)=>({cv:$(cv),lp,mode:'punto',src:null,z0:1,k:1,cx:0,cy:0,over:n
 const VA=mkV('ca','lpa'),VB=mkV('cb','lpb');
 const zV=V=>V.z0*V.k;
 function setSrc(V,src){
-  V.src=src;V.z0=Math.min(V.cv.width/src.width,V.cv.height/src.height);V.k=1;V.cx=src.width/2;V.cy=src.height/2;
+  V.src=src;
+  // Il canvas assume lo stesso rapporto della sorgente: nessun taglio e nessuna deformazione.
+  const maxW=900,maxH=1200,ratio=src.width/src.height;
+  let cw=maxW,ch=Math.round(cw/ratio);
+  if(ch>maxH){ch=maxH;cw=Math.round(ch*ratio)}
+  V.cv.width=Math.max(120,cw);V.cv.height=Math.max(120,ch);
+  V.z0=Math.min(V.cv.width/src.width,V.cv.height/src.height);
+  V.k=1;V.cx=src.width/2;V.cy=src.height/2;
 }
 function clampV(V){V.cx=Math.min(Math.max(V.cx,0),V.src.width);V.cy=Math.min(Math.max(V.cy,0),V.src.height)}
 function vRender(V){
@@ -346,15 +353,16 @@ function modo(V,id){V.mode=V.mode==='punto'?'vista':'punto';$(id).textContent=V.
 function hideLoupe(V){$(V.lp).style.display='none'}
 function loupeV(V,s,p){
   const L=$(V.lp),c=L.getContext('2d'),r=V.cv.getBoundingClientRect(),f=r.width/V.cv.width;
-  const size=190,S=Math.max(8,size/(zV(V)*f*3));
+  const size=148,S=Math.max(8,size/(zV(V)*f*3.2));
   c.fillStyle='#000';c.fillRect(0,0,380,380);
-  c.drawImage(V.src,s.x-S/2,s.y-S/2,S,S,0,0,380,380);
+  const sx=Math.max(0,Math.min(V.src.width-S,s.x-S/2));
+  const sy=Math.max(0,Math.min(V.src.height-S,s.y-S/2));
+  c.drawImage(V.src,sx,sy,S,S,0,0,380,380);
   const ax=V.axis();c.strokeStyle='#0f0';c.lineWidth=2;c.beginPath();
   if(ax!=='y'){c.moveTo(190,0);c.lineTo(190,380)}
   if(ax!=='x'){c.moveTo(0,190);c.lineTo(380,190)}
   c.stroke();
-  const left=Math.min(Math.max(p.cx-size/2,0),r.width-size);let top=p.cy-size-60;if(top<0)top=p.cy+70;
-  L.style.left=left+'px';L.style.top=top+'px';L.style.display='block';
+  L.style.left='auto';L.style.top='auto';L.style.display='block';
 }
 function attacca(V){
   const cv=V.cv,P=new Map();let g=null,placing=false;
@@ -415,7 +423,13 @@ function apriCent(url){
           y:Math.max(0,Math.min(WK.height-1,p.y*WK.height))
         }));
         TG=0;dA();
-        $('hA').textContent='✓ I 4 bordi rilevati sono riportati sulla FOTO COMPLETA. Controlla ogni angolo: se serve trascinalo sul vero bordo esterno della carta, poi premi “Raddrizza”.';
+        const nearFrame=PTS.some(p=>p.x<WK.width*.008||p.x>WK.width*.992||p.y<WK.height*.008||p.y>WK.height*.992);
+        if(nearFrame){
+          PTS=[null,null,null,null];TG=0;dA();
+          $('hA').textContent='Il rilevamento ha intercettato il bordo della FOTO invece della carta, quindi l’ho scartato. Posiziona i 4 angoli sul bordo esterno della carta: la foto rimane interamente visibile.';
+        }else{
+          $('hA').textContent='✓ I 4 bordi rilevati sono sulla FOTO COMPLETA. Se un punto non coincide con il bordo esterno reale della carta, tocca il suo nome e spostalo.';
+        }
       }else{
         $('hA').textContent='Foto completa: posiziona i 4 angoli sul bordo esterno reale della carta e poi premi “Raddrizza”. Nessuna parte dell’immagine è stata tagliata.';
       }
@@ -452,8 +466,8 @@ VA.over=(c,u)=>{
   });
 };
 VA.place=s=>{PTS[TG]={x:s.x,y:s.y}};
-VA.end=()=>{const n=PTS.findIndex(q=>!q);if(n>=0)TG=n;dA()};
-function selA(i){TG=i;dA()}
+VA.end=()=>{const n=PTS.findIndex(q=>!q);if(n>=0){TG=n;resetV(VA)}dA()};
+function selA(i){TG=i;resetV(VA);dA()}
 function dA(){
   vRender(VA);
   $('chA').innerHTML=CORN.map((n,i)=>`<button class="sec chb ${i===TG?'cur':''}" onclick="selA(${i})">${PTS[i]?'✓ ':''}${i+1} ${n}</button>`).join('');
@@ -873,8 +887,8 @@ $('file').onchange=e=>{
   im.src=URL.createObjectURL(f);e.target.value='';
 };
 </script>
-<script src="auto-camera.js?v=20260925-14"></script>
-<script src="recognizer.js?v=20260925-14"></script>
-<script src="grading-state.js?v=20260925-14"></script>
+<script src="auto-camera.js?v=20260925-15"></script>
+<script src="recognizer.js?v=20260925-15"></script>
+<script src="grading-state.js?v=20260925-15"></script>
 </body>
 </html>
