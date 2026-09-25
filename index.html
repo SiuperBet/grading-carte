@@ -5,17 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stima Grado Carte</title>
 <style>
-:root{--bg:#fff;--fg:#1a1a1a;--card:#f2f2f4;--ok:#1a8a3a;--bad:#c0392b;--warn:#fff3cd;--warnfg:#5a4500;--acc:#2f5fd0}
-@media(prefers-color-scheme:dark){:root{--bg:#121316;--fg:#eee;--card:#22242a;--warn:#3d3410;--warnfg:#f3e2a0;--acc:#7fa2ff}}
+:root{--bg:#f5f7fb;--fg:#17191f;--card:#fff;--soft:#eef2f8;--line:#dfe5ef;--ok:#168a43;--bad:#c0392b;--warn:#fff4cc;--warnfg:#5a4500;--acc:#315eea;--shadow:0 10px 34px #10206014}
+@media(prefers-color-scheme:dark){:root{--bg:#101116;--fg:#f1f2f5;--card:#1b1d24;--soft:#242731;--line:#343844;--warn:#3d3410;--warnfg:#f3e2a0;--acc:#7d9cff;--shadow:0 10px 34px #0007}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;padding:0 14px 40px;max-width:520px;margin-inline:auto}
-h1{font-size:1.3rem;margin:14px 0 6px}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;padding:0 16px 52px;max-width:960px;margin-inline:auto}
+h1{font-size:1.55rem;margin:0}
+.apphead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:18px 0 12px}.subtitle{font-size:.9rem;opacity:.72;margin-top:4px}.topactions{display:flex;gap:7px;flex-wrap:wrap}.topactions button{width:auto;margin:0}
+#start,#cap,#fine,#prezzo,#riconosci,#cent{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--shadow);margin-top:12px}
+.sectionTitle{font-size:1.05rem;font-weight:800;margin:0 0 4px}.featuregrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.feature{background:var(--soft);border-radius:12px;padding:10px;font-size:.82rem}.feature b{display:block;margin-bottom:3px}
 .avviso{background:var(--warn);color:var(--warnfg);padding:8px 10px;border-radius:8px;font-size:.85rem;margin-bottom:12px}
 button{font:inherit;padding:12px 16px;border-radius:10px;border:0;background:var(--acc);color:#fff;width:100%;margin-top:8px}
-button.sec{background:var(--card);color:var(--fg)}
-.box{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:3/4}
-video{width:100%;height:100%;object-fit:cover}
-.guida{position:absolute;inset:0;margin:auto;height:84%;aspect-ratio:63/88;border:3px dashed rgba(255,255,255,.85);border-radius:10px;pointer-events:none}
+button.sec{background:var(--soft);color:var(--fg);border:1px solid var(--line)}
+.box{position:relative;background:#050608;border-radius:16px;overflow:hidden;aspect-ratio:3/4;border:1px solid #ffffff18}
+video{width:100%;height:100%;object-fit:contain;display:block}
+#autoOverlay{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:2}
+.guida{position:absolute;inset:0;margin:auto;height:86%;aspect-ratio:63/88;border:2px dashed rgba(255,255,255,.7);border-radius:14px;pointer-events:none;z-index:1;box-shadow:0 0 0 999px #0002}
+.autoStatus{margin:8px 0 0;padding:9px 11px;border-radius:10px;background:var(--soft);font-size:.86rem}.autoStatus.ok{color:var(--ok);font-weight:750}
+.camopts{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--soft);padding:9px 10px;border-radius:10px;margin:8px 0}.camopts label{font-size:.85rem;font-weight:650}
 .chips{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}
 .chip{background:var(--card);padding:6px 10px;border-radius:99px;font-size:.85rem}
 .chip.ok{color:var(--ok)}.chip.bad{color:var(--bad)}
@@ -40,14 +46,31 @@ video{width:100%;height:100%;object-fit:cover}
 .pr img{width:36px;border-radius:4px;flex-shrink:0}
 .pr span{font-size:.9rem}
 .ptable{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}.ptable th,.ptable td{padding:6px 5px;border-bottom:1px solid #8883;text-align:left;vertical-align:top}.ptable th{font-size:.75rem;opacity:.72}.pbox{background:var(--card);padding:10px;border-radius:9px;margin-top:9px}.pactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pactions a,.pactions button{width:auto;margin:0;padding:8px 10px;font-size:.78rem}.plink{display:inline-block;background:var(--card);color:var(--fg);border-radius:8px;padding:7px 9px;text-decoration:none;border:1px solid #8883}.mini{width:auto;padding:5px 7px;margin:0;font-size:.72rem}.rprev{width:100%;max-height:440px;object-fit:contain;background:#111;border-radius:10px;margin-top:8px}.rmanual{display:flex;gap:6px;margin-top:8px}.rmanual input{flex:1;min-width:0;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884;background:var(--bg);color:var(--fg)}.hide{display:none}
+#restoreMsg{border-left:4px solid var(--ok)}
+@media(max-width:700px){body{padding-inline:10px}.apphead{padding-top:12px}.featuregrid{grid-template-columns:1fr}.topactions{width:100%}.topactions button{flex:1}.vb{flex-wrap:wrap}.vb button{min-width:45%}.ptable{display:block;overflow-x:auto;white-space:nowrap}}
 </style>
 </head>
 <body>
-<h1>Stima Grado Carte</h1>
-<div class="avviso">Questa è una <b>stima</b>, non un grading ufficiale. Le foto restano sul tuo telefono: non vengono inviate a nessuno.</div>
+<header class="apphead">
+  <div>
+    <h1>📸 Card Lab</h1>
+    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione</div>
+  </div>
+  <div class="topactions">
+    <button class="sec" onclick="location.href='album.html'">📚 Album</button>
+    <button class="sec" onclick="resetGradingSession()">↻ Nuova analisi</button>
+  </div>
+</header>
+<div class="avviso">Questa è una <b>stima</b>, non un grading ufficiale. Elaborazione foto e allineamento avvengono sul dispositivo. <span id="persistNote">Salvataggio automatico attivo.</span></div>
 
 <div id="start">
-  <p>Fase 3: ti guido nello scattare 11 foto della carta. Ad ogni foto controllo nitidezza, luce e riflessi. Se non va bene, ti chiedo di rifarla.</p>
+  <div class="sectionTitle">Analizza una carta</div>
+  <p>La fotocamera cerca automaticamente il contorno della carta, ti aiuta a centrarla e, per fronte/retro, corregge prospettiva e ritaglio dopo lo scatto. Le foto successive servono per angoli, bordi e superficie.</p>
+  <div class="featuregrid">
+    <div class="feature"><b>▣ Allineamento automatico</b>Rileva i quattro angoli e controlla stabilità e prospettiva.</div>
+    <div class="feature"><b>⌗ Centratura assistita</b>Raddrizza la carta e propone automaticamente i bordi da misurare.</div>
+    <div class="feature"><b>💾 Non perdi il lavoro</b>Foto e avanzamento vengono ripristinati dopo un aggiornamento pagina.</div>
+  </div>
   <button id="btnStart">Inizia (attiva la fotocamera)</button>
   <button class="sec hide" id="fbl" type="button" onclick="document.getElementById('file').click()">Camera non disponibile? Scegli una foto</button>
   <input id="file" type="file" accept="image/*" capture="environment" class="hide">
@@ -62,13 +85,19 @@ video{width:100%;height:100%;object-fit:cover}
   <div class="prog" id="prog"></div>
   <h2 id="titolo" style="margin:4px 0"></h2>
   <div id="hint"></div>
-  <div class="box"><video id="v" playsinline muted autoplay></video><div class="guida"></div></div>
+  <div class="camopts">
+    <label><input id="autoShotToggle" type="checkbox" checked> Scatto automatico quando la carta è stabile</label>
+    <span class="prog">solo fronte/retro</span>
+  </div>
+  <div class="box"><video id="v" playsinline muted autoplay></video><div class="guida"></div><canvas id="autoOverlay"></canvas></div>
+  <div id="autoGuideStatus" class="autoStatus">Avvia la fotocamera: cercherò automaticamente i 4 bordi.</div>
   <div class="chips" id="chips"></div>
   <div class="msg hide" id="msg"></div>
   <button id="btnShot">Scatta</button>
 </div>
 
 <div id="fine" class="hide">
+  <div id="restoreMsg" class="msg hide"></div>
   <h2>Foto raccolte</h2>
   <p>Controlla le miniature. Puoi rifare quelle che non ti convincono.</p>
   <div class="grid" id="grid"></div>
@@ -121,7 +150,7 @@ video{width:100%;height:100%;object-fit:cover}
   <h2 style="margin:4px 0">Centratura</h2>
 
   <div id="stA">
-    <div class="msg"><b>Passo 1 · Raddrizza la carta.</b> Tocca e trascina sull'angolo indicato: la lente grande ti mostra il punto preciso. Rilascia per confermare, poi passa al successivo.<br><br>
+    <div class="msg"><b>Passo 1 · Allineamento automatico.</b> Provo prima a trovare da solo i quattro angoli e a raddrizzare la carta. Se il rilevamento non è affidabile, puoi correggere i punti manualmente con la lente.<br><br><br><br>
     <b>Per muoverti nella foto:</b> con <b>due dita</b> ingrandisci (pizzica) e sposti la vista, in qualsiasi momento, anche con un punto già selezionato. Oppure usa i tasti ＋ − e ✋ qui sotto.<br><br>
     Punta dove i due bordi dritti si incontrerebbero, anche se l'angolo è arrotondato. Per scorrere la pagina, tocca fuori dalla foto.</div>
     <label style="display:block;margin-top:8px">Tipo di carta
@@ -141,7 +170,7 @@ video{width:100%;height:100%;object-fit:cover}
   </div>
 
   <div id="stB" class="hide">
-    <div class="msg"><b>Passo 2 · Segna i bordi</b>, uno alla volta. La vista si ingrandisce da sola sul lato giusto. Tocca e trascina: la linea segue il dito e la lente ingrandisce. Rilascia per confermare.<br>
+    <div class="msg"><b>Passo 2 · Bordi automatici.</b> Dopo il raddrizzamento provo a individuare bordo carta e bordo stampato. Controlla le linee proposte; se una non è precisa, toccala e correggila.<br><br>La vista si ingrandisce da sola sul lato giusto. Tocca e trascina: la linea segue il dito e la lente ingrandisce. Rilascia per confermare.<br>
     <b style="color:#d33">Rosso</b> = bordo della carta. <b style="color:#38f">Blu</b> = dove finisce il bordo stampato (es. il giallo dei Pokémon) e inizia il disegno.<br><br>
     Due dita = ingrandisci e sposta la vista, anche a punto selezionato. Toccando un nome nell'elenco rifai quella linea.</div>
     <div id="chB"></div>
@@ -208,12 +237,13 @@ function chips(a,step){
    (step.g?c(a.abb<=TH.abbagl,'Riflessi '+(a.abb*100).toFixed(1)+'%'):'<span class="chip">Riflessi: non richiesti</span>');
 }
 function mostraStep(){
+  if(window.AutoCardVision)AutoCardVision.reset();
   const s=STEPS[i];$('prog').textContent='Foto '+(i+1)+' di '+STEPS.length;
   $('titolo').textContent=s.t;$('hint').textContent=s.h;$('msg').classList.add('hide');
 }
 function loopLive(){
   clearInterval(timer);
-  timer=setInterval(()=>{const v=$('v');if(v.videoWidth)chips(analizza(v,v.videoWidth,v.videoHeight),STEPS[i])},400);
+  timer=setInterval(()=>{const v=$('v');if(v.videoWidth){chips(analizza(v,v.videoWidth,v.videoHeight),STEPS[i]);if(window.AutoCardVision)AutoCardVision.live(v,i)}},400);
 }
 async function apriCamera(){
   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
@@ -233,11 +263,20 @@ function salva(url){
   if(riprendi!==null){riprendi=null;fine()}
   else{i++;if(i>=STEPS.length)fine();else mostraStep()}
 }
-function scatta(){
+async function scatta(){
+  const btn=$('btnShot');if(btn.disabled)return;
   const v=$('v'),s=STEPS[i],a=analizza(v,v.videoWidth,v.videoHeight),p=verifica(a,s);
   if(p.length){const m=$('msg');m.innerHTML='<b>Rifai la foto.</b><br>'+p.join('<br>');m.classList.remove('hide');return}
-  const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
-  salva(c.toDataURL('image/jpeg',.92));
+  btn.disabled=true;const old=btn.textContent;btn.textContent=i<=1?'Allineo e ritaglio…':'Salvo…';
+  try{
+    const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
+    let url=c.toDataURL('image/jpeg',.92);
+    if(i<=1&&window.AutoCardVision){
+      const out=await AutoCardVision.cropCanvas(c,$('gioco').value);
+      if(out&&out.url)url=out.url;
+    }
+    salva(url);
+  }finally{btn.disabled=false;btn.textContent=old}
 }
 function fine(){
   clearInterval(timer);if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
@@ -340,13 +379,24 @@ function attacca(V){
 function apriCent(url){
   if(!url){alert('Questa foto non c\u2019è ancora.');return}
   const im=new Image();
-  im.onload=()=>{
+  im.onload=async()=>{
     const s=Math.min(1,2400/Math.max(im.naturalWidth,im.naturalHeight));
     WK=document.createElement('canvas');WK.width=Math.round(im.naturalWidth*s);WK.height=Math.round(im.naturalHeight*s);
     WK.getContext('2d').drawImage(im,0,0,WK.width,WK.height);
     PTS=[null,null,null,null];TG=0;LN={};TB=0;
-    ['start','fine','cap'].forEach(x=>$(x).classList.add('hide'));$('cent').classList.remove('hide');
+    ['start','fine','cap','prezzo','riconosci'].forEach(x=>$(x).classList.add('hide'));$('cent').classList.remove('hide');
     vaiA();
+    if(window.AutoCardVision){
+      $('hA').textContent='Rilevo automaticamente i quattro angoli…';
+      try{
+        const ac=await AutoCardVision.cornersForCanvas(WK,$('gioco').value);
+        if(ac&&ac.points){
+          PTS=ac.points;TG=0;dA();
+          $('hA').textContent='✓ Angoli rilevati automaticamente. Raddrizzo e cerco i bordi…';
+          setTimeout(()=>raddrizza(),120);
+        }else $('hA').textContent='Non sono abbastanza sicuro degli angoli: correggili manualmente e premi Raddrizza.';
+      }catch(e){$('hA').textContent='Rilevamento automatico non disponibile: usa i quattro punti manuali.'}
+    }
   };
   im.src=url;
 }
@@ -417,7 +467,16 @@ function raddrizza(){
     for(let k=0;k<3;k++)o[i+k]=sd[a+k]*(1-fx)*(1-fy)+sd[a+4+k]*fx*(1-fy)+sd[a+W*4+k]*(1-fx)*fy+sd[a+W*4+4+k]*fx*fy;
   }
   rc.putImageData(out,0,0);
-  LN={};TB=0;vaiB();
+  LN={};TB=0;
+  let autoB=null;
+  if(window.AutoCardVision){
+    try{autoB=AutoCardVision.detectBorders(RC,DIM,PX);if(autoB&&autoB.lines)LN=autoB.lines}catch(e){}
+  }
+  vaiB();
+  if(autoB&&autoB.lines){
+    $('hB').textContent='✓ Bordi proposti automaticamente'+(autoB.confidence>=.35?' con buona evidenza.':' . Controllali: il contrasto non è molto forte.')+' Tocca una linea per correggerla.';
+    risultato();
+  }
 }
 
 // ---------- Passo 2: bordi ----------
@@ -646,12 +705,19 @@ $('fileC').onchange=e=>{const f=e.target.files[0];if(f)apriCent(URL.createObject
 $('btnStart').onclick=avvia;$('btnShot').onclick=scatta;
 $('file').onchange=e=>{
   const f=e.target.files[0];if(!f)return;const im=new Image();
-  im.onload=()=>{const a=analizza(im,im.width,im.height),p=verifica(a,STEPS[i]);
+  im.onload=async()=>{const a=analizza(im,im.width,im.height),p=verifica(a,STEPS[i]);
     if(p.length){alert('Rifai la foto:\n'+p.join('\n'));return}
-    $('start').classList.add('hide');salva(im.src);if(i<STEPS.length){$('cap').classList.remove('hide')}};
+    let url=im.src;
+    if(i<=1&&window.AutoCardVision){
+      const cc=document.createElement('canvas');cc.width=im.naturalWidth;cc.height=im.naturalHeight;cc.getContext('2d').drawImage(im,0,0);
+      const out=await AutoCardVision.cropCanvas(cc,$('gioco').value);if(out&&out.url)url=out.url;
+    }
+    $('start').classList.add('hide');salva(url);if(i<STEPS.length){$('cap').classList.remove('hide')}};
   im.src=URL.createObjectURL(f);e.target.value='';
 };
 </script>
+<script src="auto-camera.js"></script>
 <script src="recognizer.js"></script>
+<script src="grading-state.js"></script>
 </body>
 </html>
