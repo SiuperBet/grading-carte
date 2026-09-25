@@ -150,8 +150,8 @@ async function open(url,opts){
       setStatus('cc2Astatus','Foto pronta. Puoi toccare i 4 angoli subito; il rilevamento automatico parte senza bloccare il lavoro.');
     }
     setupCanvasA();renderA();renderCornerButtons();
-    const version=++state.editingVersion;
-    setTimeout(()=>{if(version===state.editingVersion)autoDetect(false)},180);
+    state.editingVersion++;
+    setStatus('cc2Astatus',saved&&saved.points?'Angoli salvati ripristinati. Controllali oppure usa il rilevamento automatico.':'Foto pronta. Tocca i 4 angoli oppure premi “Rileva automaticamente”.');
   }catch(e){setStatus('cc2Astatus','Non riesco a caricare la foto: '+e.message,'warn')}
 }
 
@@ -182,25 +182,176 @@ function drawLensA(p){
 }
 function hideLensA(){el('cc2lensA').style.display='none'}
 
+
+function nextFrame(){
+  return new Promise(function(resolve){
+    if(window.requestAnimationFrame)requestAnimationFrame(function(){resolve()});
+    else setTimeout(resolve,0);
+  });
+}
+function colorDistance(a,b){
+  var dr=a[0]-b[0],dg=a[1]-b[1],db=a[2]-b[2];
+  return Math.sqrt(dr*dr+dg*dg+db*db);
+}
+async function lightDetectCorners(source,game,onProgress){
+  var max=260,s=Math.min(1,max/Math.max(source.width,source.height));
+  var cv=document.createElement('canvas');
+  cv.width=Math.max(120,Math.round(source.width*s));
+  cv.height=Math.max(120,Math.round(source.height*s));
+  var cx=cv.getContext('2d',{willReadFrequently:true});
+  cx.drawImage(source,0,0,cv.width,cv.height);
+  var W=cv.width,H=cv.height,img=cx.getImageData(0,0,W,H).data;
+  var gray=new Float32Array(W*H),mag=new Float32Array(W*H);
+
+  for(var i=0,p=0;i<gray.length;i++,p+=4)gray[i]=.299*img[p]+.587*img[p+1]+.114*img[p+2];
+  for(var y=1;y<H-1;y++){
+    for(var x=1;x<W-1;x++){
+      var z=y*W+x;
+      var gx=-gray[z-W-1]-2*gray[z-1]-gray[z+W-1]+gray[z-W+1]+2*gray[z+1]+gray[z+W+1];
+      var gy=-gray[z-W-1]-2*gray[z-W]-gray[z-W+1]+gray[z+W-1]+2*gray[z+W]+gray[z+W+1];
+      mag[z]=Math.hypot(gx,gy);
+    }
+    if((y&31)===0)await nextFrame();
+  }
+
+  function rgb(x,y){
+    x=Math.max(0,Math.min(W-1,Math.round(x)));
+    y=Math.max(0,Math.min(H-1,Math.round(y)));
+    var q=(y*W+x)*4;return [img[q],img[q+1],img[q+2]];
+  }
+  // Sfondo: media robusta di quattro piccole aree agli angoli.
+  var bgSamples=[],pw=Math.max(5,Math.round(W*.07)),ph=Math.max(5,Math.round(H*.07));
+  [[0,0],[W-pw,0],[0,H-ph],[W-pw,H-ph]].forEach(function(o){
+    for(var yy=o[1];yy<o[1]+ph;yy+=2)for(var xx=o[0];xx<o[0]+pw;xx+=2)bgSamples.push(rgb(xx,yy));
+  });
+  var bg=[0,0,0];
+  bgSamples.forEach(function(v){bg[0]+=v[0];bg[1]+=v[1];bg[2]+=v[2]});
+  bg=bg.map(function(v){return v/Math.max(1,bgSamples.length)});
+  var noise=0;
+  bgSamples.forEach(function(v){noise+=colorDistance(v,bg)});
+  noise/=Math.max(1,bgSamples.length);
+  var bgScale=Math.max(24,noise*2.6);
+
+  function bgDist(x,y){return colorDistance(rgb(x,y),bg)}
+  function rectCorners(mx,my,h,deg){
+    var ratio=game==='ygo'?59/86:63/88,w=h*ratio,t=deg*Math.PI/180;
+    var ux={x:Math.cos(t),y:Math.sin(t)},uy={x:-Math.sin(t),y:Math.cos(t)};
+    return [
+      {x:mx-ux.x*w/2-uy.x*h/2,y:my-ux.y*w/2-uy.y*h/2},
+      {x:mx+ux.x*w/2-uy.x*h/2,y:my+ux.y*w/2-uy.y*h/2},
+      {x:mx+ux.x*w/2+uy.x*h/2,y:my+ux.y*w/2+uy.y*h/2},
+      {x:mx-ux.x*w/2+uy.x*h/2,y:my-ux.y*w/2+uy.y*h/2}
+    ];
+  }
+  function evaluate(q,mx,my){
+    for(var i=0;i<4;i++){
+      if(q[i].x<2||q[i].x>W-3||q[i].y<2||q[i].y>H-3)return null;
+    }
+    var sideScores=[],outsideScores=[],insideScores=[],contrastScores=[];
+    for(var si=0;si<4;si++){
+      var a=q[si],b=q[(si+1)%4],dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1;
+      var tx=dx/len,ty=dy/len,nx=-ty,ny=tx;
+      var midx=(a.x+b.x)/2,midy=(a.y+b.y)/2;
+      // nx,ny deve puntare verso l'esterno.
+      if(Math.hypot(midx+nx*5-mx,midy+ny*5-my)<Math.hypot(midx-nx*5-mx,midy-ny*5-my)){nx=-nx;ny=-ny}
+      var strong=0,edge=0,outside=0,inside=0,contrast=0,n=16,off=Math.max(3,Math.min(6,len*.025));
+      for(var k=0;k<n;k++){
+        var t=.06+.88*k/(n-1),px=a.x+dx*t,py=a.y+dy*t,best=0;
+        for(var o=-1;o<=1;o++){
+          var ex=Math.round(px+nx*o),ey=Math.round(py+ny*o);
+          if(ex<1||ex>=W-1||ey<1||ey>=H-1)continue;
+          best=Math.max(best,mag[ey*W+ex]);
+        }
+        edge+=best;
+        if(best>=Math.max(45,bgScale*1.15))strong++;
+        var ox=px+nx*off,oy=py+ny*off,ix=px-nx*off,iy=py-ny*off;
+        var od=bgDist(ox,oy),id=bgDist(ix,iy);
+        outside+=Math.max(0,1-od/(bgScale*2.2));
+        inside+=Math.max(0,Math.min(1,(id-bgScale*.55)/(bgScale*2.0)));
+        contrast+=Math.min(1,colorDistance(rgb(ix,iy),rgb(ox,oy))/95);
+      }
+      sideScores.push((strong/n)*.55+Math.min(1,(edge/n)/160)*.45);
+      outsideScores.push(outside/n);insideScores.push(inside/n);contrastScores.push(contrast/n);
+    }
+    var minSide=Math.min.apply(null,sideScores);
+    var avgSide=sideScores.reduce(function(a,v){return a+v},0)/4;
+    var out=outsideScores.reduce(function(a,v){return a+v},0)/4;
+    var inn=insideScores.reduce(function(a,v){return a+v},0)/4;
+    var con=contrastScores.reduce(function(a,v){return a+v},0)/4;
+    var area=Math.abs((q[0].x*q[1].y-q[1].x*q[0].y)+(q[1].x*q[2].y-q[2].x*q[1].y)+(q[2].x*q[3].y-q[3].x*q[2].y)+(q[3].x*q[0].y-q[0].x*q[3].y))/2/(W*H);
+    var score=.28*minSide+.20*avgSide+.23*out+.16*inn+.10*con+.03*Math.min(1,area/.55);
+    if(out<.30)score*=.72;
+    if(minSide<.30)score*=.65;
+    return {score:score,outside:out,inside:inn,minSide:minSide,area:area};
+  }
+  function values(a,b,n){
+    var r=[];if(n<=1)return[a];
+    for(var i=0;i<n;i++)r.push(a+(b-a)*i/(n-1));return r;
+  }
+  async function search(spec,label){
+    var best=null,count=0,total=spec.hs.length*spec.angles.length*spec.xs.length*spec.ys.length;
+    for(var hi=0;hi<spec.hs.length;hi++)for(var ai=0;ai<spec.angles.length;ai++)for(var xi=0;xi<spec.xs.length;xi++)for(var yi=0;yi<spec.ys.length;yi++){
+      var q=rectCorners(spec.xs[xi],spec.ys[yi],spec.hs[hi],spec.angles[ai]),ev=evaluate(q,spec.xs[xi],spec.ys[yi]);
+      if(ev&&(!best||ev.score>best.ev.score))best={q:q,ev:ev,h:spec.hs[hi],a:spec.angles[ai],x:spec.xs[xi],y:spec.ys[yi]};
+      count++;
+      if(count%90===0){
+        if(onProgress)onProgress(label+' '+Math.round(count/total*100)+'%');
+        await nextFrame();
+      }
+    }
+    return best;
+  }
+
+  var coarse=await search({
+    hs:values(H*.46,H*.91,8),
+    angles:values(-10,10,7),
+    xs:values(W*.36,W*.64,5),
+    ys:values(H*.34,H*.66,5)
+  },'Ricerca');
+  if(!coarse)return null;
+
+  var fine=await search({
+    hs:values(coarse.h*.95,coarse.h*1.05,5),
+    angles:values(coarse.a-2.5,coarse.a+2.5,5),
+    xs:values(coarse.x-W*.028,coarse.x+W*.028,5),
+    ys:values(coarse.y-H*.028,coarse.y+H*.028,5)
+  },'Rifinitura');
+  var best=fine||coarse;
+  if(!best||best.ev.score<.43||best.ev.minSide<.34)return null;
+  return {
+    points:best.q.map(function(p){return {x:p.x/s,y:p.y/s}}),
+    confidence:Math.max(0,Math.min(1,(best.ev.score-.40)/.36)),
+    metrics:best.ev
+  };
+}
+
 async function autoDetect(force){
   if(state.autoBusy||!state.source)return;
-  state.autoBusy=true;const version=state.editingVersion;
-  if(force)setStatus('cc2Astatus','Cerco un quadrilatero completo compatibile con la carta…');
+  state.autoBusy=true;
+  var btn=el('cc2Auto'),old=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='Analizzo…'}
+  var version=state.editingVersion;
+  if(force)setStatus('cc2Astatus','Rilevamento leggero in corso… puoi ancora scorrere la pagina.');
   try{
-    if(!window.AutoCardVision||!AutoCardVision.detectCard){if(force)setStatus('cc2Astatus','Rilevamento automatico non disponibile: usa i 4 punti manuali.','warn');return}
-    const small=document.createElement('canvas');const s=Math.min(1,520/Math.max(state.source.width,state.source.height));
-    small.width=Math.round(state.source.width*s);small.height=Math.round(state.source.height*s);small.getContext('2d').drawImage(state.source,0,0,small.width,small.height);
-    const g=gameDims(),res=await AutoCardVision.detectCard(small,g.w+','+g.h);
+    var res=await lightDetectCorners(state.source,state.game,function(t){
+      if(force)setStatus('cc2Astatus',t+' · nessun blocco della pagina');
+    });
     if(version!==state.editingVersion&&!force)return;
-    const af=res&&res.metrics&&Number(res.metrics.areaFraction),re=res&&res.metrics&&Number(res.metrics.ratioErr);
-    if(res&&res.points&&(res.confidence||0)>=.58&&Number.isFinite(af)&&af>=.18&&af<=.88&&Number.isFinite(re)&&re<=.12){
-      state.points=res.points.map(p=>({x:p.x/s,y:p.y/s}));state.editingVersion++;saveState();renderCornerButtons();renderA();
-      setStatus('cc2Astatus','✓ Angoli proposti automaticamente. Controlla che i 4 punti siano sul bordo fisico; puoi trascinarli prima di raddrizzare.','ok');
+    if(res&&res.points&&(res.confidence||0)>=.16){
+      state.points=res.points;
+      state.editingVersion++;
+      saveState();renderCornerButtons();renderA();
+      var pct=Math.round((res.confidence||0)*100);
+      setStatus('cc2Astatus','✓ Angoli proposti ('+pct+'%). Controlla visivamente tutti e 4 i punti prima di raddrizzare.','ok');
     }else if(force){
-      setStatus('cc2Astatus','Non ho trovato un quadrilatero abbastanza affidabile. Nessun punto automatico è stato applicato: posiziona i 4 angoli manualmente.','warn');
+      setStatus('cc2Astatus','Non trovo un bordo sufficientemente affidabile senza rischiare punti sbagliati. Posiziona i 4 angoli manualmente.','warn');
     }
-  }catch(e){if(force)setStatus('cc2Astatus','Rilevamento automatico non riuscito. Usa i 4 punti manuali.','warn')}
-  finally{state.autoBusy=false}
+  }catch(e){
+    if(force)setStatus('cc2Astatus','Rilevamento rapido non riuscito: '+e.message+'. Puoi continuare manualmente.','warn');
+  }finally{
+    state.autoBusy=false;
+    if(btn){btn.disabled=false;btn.textContent=old||'◎ Rileva automaticamente'}
+  }
 }
 
 function bindA(){
