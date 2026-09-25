@@ -11,7 +11,7 @@
 body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;padding:0 16px 52px;max-width:960px;margin-inline:auto}
 h1{font-size:1.55rem;margin:0}
 .apphead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:18px 0 12px}.subtitle{font-size:.9rem;opacity:.72;margin-top:4px}.topactions{display:flex;gap:7px;flex-wrap:wrap}.topactions button{width:auto;margin:0}
-#start,#cap,#fine,#prezzo,#riconosci,#cent{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--shadow);margin-top:12px}
+#start,#cap,#fine,#prezzo,#riconosci,#cent,#grading{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--shadow);margin-top:12px}
 .sectionTitle{font-size:1.05rem;font-weight:800;margin:0 0 4px}.featuregrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.feature{background:var(--soft);border-radius:12px;padding:10px;font-size:.82rem}.feature b{display:block;margin-bottom:3px}
 .avviso{background:var(--warn);color:var(--warnfg);padding:8px 10px;border-radius:8px;font-size:.85rem;margin-bottom:12px}
 button{font:inherit;padding:12px 16px;border-radius:10px;border:0;background:var(--acc);color:#fff;width:100%;margin-top:8px}
@@ -47,6 +47,19 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 .pr span{font-size:.9rem}
 .ptable{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}.ptable th,.ptable td{padding:6px 5px;border-bottom:1px solid #8883;text-align:left;vertical-align:top}.ptable th{font-size:.75rem;opacity:.72}.pbox{background:var(--card);padding:10px;border-radius:9px;margin-top:9px}.pactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pactions a,.pactions button{width:auto;margin:0;padding:8px 10px;font-size:.78rem}.plink{display:inline-block;background:var(--card);color:var(--fg);border-radius:8px;padding:7px 9px;text-decoration:none;border:1px solid #8883}.mini{width:auto;padding:5px 7px;margin:0;font-size:.72rem}.rpreviewWrap{position:relative;width:100%;margin-top:8px;background:#090a0d;border-radius:12px;overflow:hidden}.rprev{display:block;width:100%;height:auto;max-height:560px;object-fit:contain;background:#090a0d;border-radius:10px;margin:0 auto}.rDetectOverlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.detectLegend{font-size:.8rem;margin-top:6px;opacity:.78}.uploadGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.uploadBtn{display:flex;align-items:center;justify-content:center;text-align:center;font:inherit;padding:12px 16px;border-radius:10px;background:var(--soft);color:var(--fg);border:1px solid var(--line);min-height:52px;cursor:pointer}.uploadBtn:active{transform:scale(.99)}.photoActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.photoActions button{width:auto;flex:1;min-width:140px}.rmanual{display:flex;gap:6px;margin-top:8px}.rmanual input{flex:1;min-width:0;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884;background:var(--bg);color:var(--fg)}.hide{display:none}
 #restoreMsg{border-left:4px solid var(--ok)}
+.slotCard{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.slotCard img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;background:#08090b}
+.slotTitle{font-weight:800;font-size:.82rem}.slotState{font-size:.75rem;opacity:.7}
+.slotActions{display:grid;grid-template-columns:1fr 1fr;gap:5px}.slotActions button{margin:0;padding:7px 5px;font-size:.74rem}
+.slotActions .danger{color:#ffb3ac}
+.workflowBar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.workflowBar button{margin:0}
+.gradeHero{display:flex;align-items:center;gap:14px;background:var(--soft);border-radius:14px;padding:14px;margin:10px 0}
+.gradeBig{font-size:2.4rem;font-weight:900;line-height:1}.gradeBig span{font-size:1rem;opacity:.7}
+.gradeMetric{display:flex;justify-content:space-between;gap:12px;align-items:center;background:var(--soft);border-radius:10px;padding:10px;margin:7px 0}
+.gradeValue{font-size:1.3rem;font-weight:900;min-width:48px;text-align:right}.gradeDetail{font-size:.78rem;opacity:.7;margin-top:2px}
+.gradeMissing,.gradeDisclaimer{padding:10px;border-radius:10px;margin-top:10px;font-size:.84rem}.gradeMissing{background:var(--warn);color:var(--warnfg)}.gradeDisclaimer{background:var(--soft)}
+.gradeIntro{line-height:1.4}.gradeIntro b{font-weight:850}
 @media(max-width:700px){body{padding-inline:10px}.apphead{padding-top:12px}.featuregrid{grid-template-columns:1fr}.topactions{width:100%}.topactions button{flex:1}.vb{flex-wrap:wrap}.vb button{min-width:45%}.ptable{display:block;overflow-x:auto;white-space:nowrap}.tt{max-height:58vh}.lp{width:132px;height:132px}}
 </style>
 </head>
@@ -54,7 +67,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 <header class="apphead">
   <div>
     <h1>📸 Card Lab</h1>
-    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione · <span style="opacity:.65">Build 2026.09.25.36</span></div>
+    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione · <span style="opacity:.65">Build 2026.09.25.37</span></div>
   </div>
   <div class="topactions">
     <button class="sec" onclick="location.href='album.html'">📚 Album</button>
@@ -99,14 +112,31 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 <div id="fine" class="hide">
   <div id="restoreMsg" class="msg hide"></div>
   <h2>Foto raccolte</h2>
-  <p>Controlla le miniature. Puoi rifare quelle che non ti convincono.</p>
+  <p>Completa il set fotografico direttamente da qui. Ogni riquadro può essere scattato, caricato dalla galleria, rifatto o eliminato senza ricominciare l'analisi.</p>
+  <input id="slotFile" type="file" accept="image/*" class="hide">
+  <div class="workflowBar">
+    <button id="nextMissingBtn" onclick="continuaFotoMancanti()">📷 Completa foto mancanti</button>
+    <button onclick="apriGrading()">🧪 Pre-grading</button>
+  </div>
   <div class="grid" id="grid"></div>
-  <button onclick="apriCent(foto[0])">Misura centratura del fronte</button>
-  <button class="sec" onclick="apriCent(foto[1])">Misura centratura del retro</button>
+  <button id="centerFrontBtn" onclick="apriCent(foto[0])">Misura centratura del fronte</button>
+  <button id="centerBackBtn" class="sec" onclick="apriCent(foto[1])">Misura centratura del retro</button>
   <button class="sec" onclick="apriPrezzo()">Cerca prezzi e confronti di mercato</button>
-  <button class="sec" onclick="apriRiconoscimento(foto[0])">📷 Riconosci automaticamente il fronte</button>
+  <button id="recognizeFrontBtn" class="sec" onclick="apriRiconoscimento(foto[0])">📷 Riconosci automaticamente il fronte</button>
   <button class="sec" onclick="location.href='album.html'">📚 Album / collezione</button>
-  <div class="msg">La foto originale resta sempre disponibile. Allineamento e centratura usano il nuovo flusso V2 senza ritagliare l’acquisizione.</div>
+  <div class="msg">Per una stima completa servono fronte, retro, 4 angoli, 4 bordi e luce inclinata. Se manca qualcosa puoi comunque ottenere un'analisi parziale con livello di confidenza.</div>
+</div>
+
+
+<div id="grading" class="hide">
+  <h2 style="margin:4px 0">🧪 Pre-grading Card Lab</h2>
+  <div class="msg gradeIntro"><b>100% locale e 0 €.</b> La stima combina centratura misurata, qualità delle foto e analisi visiva di angoli, bordi e superficie. Le immagini restano sul dispositivo.<br><br>
+  Il risultato è una <b>pre-stima</b>, non sostituisce PSA, BGS, CGC o altri grader professionali.</div>
+  <div id="gradeRequirements" class="msg"></div>
+  <button onclick="eseguiGrading()">✨ Analizza condizione</button>
+  <div id="gradeStatus" class="msg">Pronto per l'analisi.</div>
+  <div id="gradeResults"></div>
+  <button class="sec" onclick="esciGrading()">Indietro alle foto</button>
 </div>
 
 <div id="prezzo" class="hide">
@@ -299,15 +329,56 @@ function fine(){
   clearInterval(timer);if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
   $('start').classList.add('hide');$('cap').classList.add('hide');mostraFine();
 }
+let slotUploadIndex=null;
+function slotHtml(s,k){
+  const has=!!foto[k];
+  const preview=has?'<img src="'+foto[k]+'" alt="'+s.t+'">':'<div style="aspect-ratio:3/4;border-radius:8px;background:#111318;display:grid;place-items:center;font-size:2rem;opacity:.45">＋</div>';
+  return '<div class="slotCard">'+preview+
+    '<div class="slotTitle">'+s.t+'</div>'+
+    '<div class="slotState">'+(has?'foto salvata':'manca')+'</div>'+
+    '<div class="slotActions">'+
+      '<button class="sec" onclick="rifai('+k+')">'+(has?'📷 Rifai':'📷 Scatta')+'</button>'+
+      '<button class="sec" onclick="caricaSlot('+k+')">🖼️ Galleria</button>'+
+      (has?'<button class="sec danger" onclick="eliminaSlot('+k+')">🗑 Elimina</button>':'')+
+    '</div></div>';
+}
 function mostraFine(){
-  ['start','cap','cent','prezzo','riconosci'].forEach(x=>$(x).classList.add('hide'));
+  ['start','cap','cent','prezzo','riconosci','grading'].forEach(x=>$(x).classList.add('hide'));
   if(window.GradingPersist)GradingPersist.saveMeta();
   $('fine').classList.remove('hide');
-  $('grid').innerHTML=STEPS.map((s,k)=>foto[k]?`<div><img src="${foto[k]}"><b>${s.t}</b><br><a href="#" onclick="rifai(${k});return false">Rifai</a></div>`:`<div><b>${s.t}</b><br>non scattata</div>`).join('');
+  $('grid').innerHTML=STEPS.map(slotHtml).join('');
+  const front=!!foto[0],back=!!foto[1],missing=STEPS.findIndex((s,k)=>!foto[k]);
+  $('centerFrontBtn').disabled=!front;
+  $('centerBackBtn').disabled=!back;
+  $('recognizeFrontBtn').disabled=!front;
+  $('nextMissingBtn').textContent=missing<0?'✓ Set fotografico completo':'📷 Completa: '+STEPS[missing].t;
+  $('nextMissingBtn').disabled=missing<0;
+  if(window.CardGrade)CardGrade.refresh();
 }
 async function rifai(k){
   i=k;riprendi=k;$('fine').classList.add('hide');$('cap').classList.remove('hide');mostraStep();
-  try{await apriCamera()}catch(e){$('msg').textContent='Fotocamera non disponibile ('+e.name+').';$('msg').classList.remove('hide')}
+  try{await apriCamera()}catch(e){
+    $('msg').innerHTML='Fotocamera non disponibile ('+e.name+').<br><button class="sec" onclick="caricaSlot('+k+')">Scegli dalla galleria</button>';
+    $('msg').classList.remove('hide')
+  }
+}
+function continuaFotoMancanti(){
+  const k=STEPS.findIndex((s,j)=>!foto[j]);
+  if(k<0)return;
+  rifai(k);
+}
+function caricaSlot(k){
+  slotUploadIndex=k;
+  const f=$('slotFile');f.value='';f.click();
+}
+async function eliminaSlot(k){
+  if(!foto[k])return;
+  if(!confirm('Eliminare la foto "'+STEPS[k].t+'"?'))return;
+  foto[k]=null;
+  try{if(window.GradingPersist&&GradingPersist.deletePhoto)await GradingPersist.deletePhoto(k)}catch(e){}
+  if(k===0)try{localStorage.removeItem('cardlab.grading.center.front')}catch(e){}
+  if(k===1)try{localStorage.removeItem('cardlab.grading.center.back')}catch(e){}
+  mostraFine();
 }
 // ---- FASE 4 (v3): visore con zoom, spostamento e lente grande ----
 const PX=5; // punti per mm: sufficiente per la stima e molto più leggero su smartphone
@@ -877,6 +948,22 @@ function mostraYgo(i){
   $('pcarta').scrollIntoView({behavior:'smooth',block:'start'});
 }
 $('fileC').onchange=e=>{const f=e.target.files[0];if(f)apriCent(URL.createObjectURL(f));e.target.value=''};
+$('slotFile').onchange=e=>{
+  const f=e.target.files&&e.target.files[0],k=slotUploadIndex;slotUploadIndex=null;
+  if(!f||!Number.isInteger(k))return;
+  const im=new Image();
+  im.onload=()=>{
+    const cc=document.createElement('canvas'),mx=1800,s=Math.min(1,mx/Math.max(im.naturalWidth,im.naturalHeight));
+    cc.width=Math.max(1,Math.round(im.naturalWidth*s));cc.height=Math.max(1,Math.round(im.naturalHeight*s));
+    cc.getContext('2d').drawImage(im,0,0,cc.width,cc.height);
+    const url=cc.toDataURL('image/jpeg',.92);
+    try{URL.revokeObjectURL(im.src)}catch(_){}
+    foto[k]=url;if(window.GradingPersist)GradingPersist.savePhoto(k,url);
+    if(k===0||k===1)try{localStorage.removeItem('cardlab.grading.center.'+(k===0?'front':'back'))}catch(_){}
+    mostraFine();
+  };
+  im.src=URL.createObjectURL(f);e.target.value='';
+};
 $('btnStart').onclick=avvia;$('btnShot').onclick=scatta;
 $('file').onchange=e=>{
   const f=e.target.files[0];if(!f)return;const im=new Image();
@@ -891,9 +978,9 @@ $('file').onchange=e=>{
   im.src=URL.createObjectURL(f);e.target.value='';
 };
 </script>
-<script src="auto-camera.js?v=20260925-36"></script>
-<script src="card-center-v2.js?v=20260925-36"></script>
-<script src="recognizer.js?v=20260925-36"></script>
-<script src="grading-state.js?v=20260925-36"></script>
+<script src="auto-camera.js?v=20260925-37"></script>
+<script src="card-center-v2.js?v=20260925-37"></script>
+<script src="recognizer.js?v=20260925-37"></script>
+<script src="grading-state.js?v=20260925-37"></script>\n<script src="grading-engine.js?v=20260925-37"></script>
 </body>
 </html>
