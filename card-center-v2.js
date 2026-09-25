@@ -492,7 +492,7 @@ async function warp(){
     setStatus('cc2Astatus','Carta raddrizzata. Preparo le linee di centratura…');
     await nextFrame();
 
-    state.lines=autoInnerLines(state.rectified);
+    state.lines=await autoInnerLines(state.rectified,function(msg){setStatus('cc2Astatus',msg)});
     state.lineSel='l';
     setupCanvasB();renderB();renderLineButtons();showOnly('B');updateResult();
 
@@ -515,18 +515,55 @@ async function warp(){
 function setupCanvasB(){
   const cv=el('cc2canvasB');cv.width=state.rectified.width;cv.height=state.rectified.height;
 }
-function autoInnerLines(c){
-  const W=c.width,H=c.height,x=c.getContext('2d',{willReadFrequently:true}),d=x.getImageData(0,0,W,H).data,g=new Float32Array(W*H);
-  for(let i=0,p=0;i<g.length;i++,p+=4)g[i]=.299*d[p]+.587*d[p+1]+.114*d[p+2];
-  function vscore(xx){let a=[];for(let y=Math.round(H*.10);y<H*.90;y+=3){const z=y*W+xx;a.push(Math.abs(g[z+1]-g[z-1]))}a.sort((a,b)=>a-b);return a.slice(Math.floor(a.length*.35)).reduce((s,v)=>s+v,0)}
-  function hscore(yy){let a=[];for(let xx=Math.round(W*.10);xx<W*.90;xx+=3){const z=yy*W+xx;a.push(Math.abs(g[z+W]-g[z-W]))}a.sort((a,b)=>a-b);return a.slice(Math.floor(a.length*.35)).reduce((s,v)=>s+v,0)}
-  function best(from,to,fn){let bi=from,bs=-1;for(let i=from;i<=to;i++){const s=fn(i);if(s>bs){bs=s;bi=i}}return bi}
-  return {
-    l:best(Math.round(W*.025),Math.round(W*.20),vscore),
-    r:best(Math.round(W*.80),Math.round(W*.975),vscore),
-    t:best(Math.round(H*.025),Math.round(H*.18),hscore),
-    b:best(Math.round(H*.82),Math.round(H*.975),hscore)
-  };
+async function autoInnerLines(c,onProgress){
+  const W=c.width,H=c.height,x=c.getContext('2d',{willReadFrequently:true});
+  const d=x.getImageData(0,0,W,H).data,g=new Float32Array(W*H);
+
+  // Conversione a blocchi: evita un unico loop lungo sul thread UI.
+  for(let y=0;y<H;y++){
+    let base=y*W,p=base*4;
+    for(let xx=0;xx<W;xx++,p+=4)g[base+xx]=.299*d[p]+.587*d[p+1]+.114*d[p+2];
+    if((y&31)===0){
+      if(onProgress)onProgress('Analizzo la carta… '+Math.round(y/H*55)+'%');
+      await nextFrame();
+    }
+  }
+
+  function vscore(xx){
+    let a=[];
+    for(let y=Math.round(H*.10);y<H*.90;y+=3){
+      const z=y*W+xx;a.push(Math.abs(g[z+1]-g[z-1]));
+    }
+    a.sort((a,b)=>a-b);
+    return a.slice(Math.floor(a.length*.35)).reduce((s,v)=>s+v,0);
+  }
+  function hscore(yy){
+    let a=[];
+    for(let xx=Math.round(W*.10);xx<W*.90;xx+=3){
+      const z=yy*W+xx;a.push(Math.abs(g[z+W]-g[z-W]));
+    }
+    a.sort((a,b)=>a-b);
+    return a.slice(Math.floor(a.length*.35)).reduce((s,v)=>s+v,0);
+  }
+  async function best(from,to,fn,label,startPct,endPct){
+    let bi=from,bs=-1,count=0,total=Math.max(1,to-from+1);
+    for(let i=from;i<=to;i++){
+      const s=fn(i);if(s>bs){bs=s;bi=i}
+      count++;
+      if((count&15)===0){
+        if(onProgress)onProgress(label+' '+Math.round(startPct+(endPct-startPct)*count/total)+'%');
+        await nextFrame();
+      }
+    }
+    return bi;
+  }
+
+  const l=await best(Math.round(W*.025),Math.round(W*.20),vscore,'Cerco linee',55,66);
+  const r=await best(Math.round(W*.80),Math.round(W*.975),vscore,'Cerco linee',66,77);
+  const t=await best(Math.round(H*.025),Math.round(H*.18),hscore,'Cerco linee',77,88);
+  const b=await best(Math.round(H*.82),Math.round(H*.975),hscore,'Cerco linee',88,100);
+
+  return {l:l,r:r,t:t,b:b};
 }
 function renderB(){
   const cv=el('cc2canvasB'),x=cv.getContext('2d');x.clearRect(0,0,cv.width,cv.height);x.drawImage(state.rectified,0,0);
@@ -600,7 +637,17 @@ function bind(){
   el('cc2Clear').onclick=()=>{state.points=[null,null,null,null];state.selected=0;state.editingVersion++;renderCornerButtons();renderA();setStatus('cc2Astatus','Punti azzerati. Tocca i quattro angoli fisici della carta.')};
   el('cc2Warp').onclick=warp;
   el('cc2BackA').onclick=()=>{hideLensB();showOnly('A');renderA()};
-  el('cc2AutoLines').onclick=()=>{state.lines=autoInnerLines(state.rectified);renderB();updateResult();setStatus('cc2Bstatus','Linee ricalcolate automaticamente. Controllale visivamente.','ok')};
+  el('cc2AutoLines').onclick=async()=>{
+    const b=el('cc2AutoLines');if(b.disabled)return;
+    b.disabled=true;const old=b.textContent;b.textContent='Analizzo…';
+    try{
+      state.lines=await autoInnerLines(state.rectified,function(msg){setStatus('cc2Bstatus',msg)});
+      renderB();updateResult();
+      setStatus('cc2Bstatus','Linee ricalcolate automaticamente. Controllale visivamente.','ok');
+    }finally{
+      b.disabled=false;b.textContent=old;
+    }
+  };
   el('cc2UseOCR').onclick=useForOCR;
   el('cc2Exit').onclick=close;
 }
