@@ -132,8 +132,12 @@ video{width:100%;height:100%;object-fit:contain;display:block}
     <select id="rgame" style="font:inherit;padding:8px;width:100%;margin-top:4px"><option value="poke">Pokémon</option><option value="ygo">Yu-Gi-Oh!</option></select>
   </label>
   <button id="rfront" class="sec" onclick="usaFronteOCR()" style="display:none">Usa la foto “Fronte” già scattata</button>
-  <button class="sec" onclick="document.getElementById('rfile').click()">Scatta / scegli una foto della carta</button>
-  <input id="rfile" type="file" accept="image/*" capture="environment" class="hide">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+    <button class="sec" type="button" onclick="document.getElementById('rfileCamera').click()" style="margin:0">📷 Scatta foto</button>
+    <button class="sec" type="button" onclick="document.getElementById('rfileGallery').click()" style="margin:0">🖼️ Scegli dalla galleria</button>
+  </div>
+  <input id="rfileCamera" type="file" accept="image/*" capture="environment" class="hide">
+  <input id="rfileGallery" type="file" accept="image/*" class="hide">
   <img id="rpreview" class="rprev" alt="Foto carta" style="display:none">
   <div id="rstatus" class="msg hide"></div>
   <div id="rresults"></div>
