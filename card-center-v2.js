@@ -475,25 +475,42 @@ function fallbackWarp(src,pts,W,H){
 }
 async function warp(){
   if(!(state.points.every(Boolean)&&convex(state.points)))return;
-  setStatus('cc2Astatus','Raddrizzo la carta…');el('cc2Warp').disabled=true;
+  hideLensA();
+  setStatus('cc2Astatus','Raddrizzo la carta…');
+  el('cc2Warp').disabled=true;
   const d=gameDims(),H=880,W=Math.round(H*d.w/d.h);
   try{
-    let out=null;
-    if(window.AutoCardVision&&AutoCardVision.warpFromPoints){
-      try{out=await AutoCardVision.warpFromPoints(state.source,orderPoints(state.points),W,H)}catch(e){}
-    }
-    if(!out||!out.canvas)out={canvas:fallbackWarp(state.source,state.points,W,H)};
-    state.rectified=out.canvas;state.rectifiedUrl=canvasUrl(state.rectified,.94);
-    state.lines=autoInnerLines(state.rectified);state.lineSel='l';setupCanvasB();renderB();renderLineButtons();showOnly('B');updateResult();
+    // V2 mobile: niente OpenCV qui. Il vecchio warp bloccava il thread su Android.
+    // Canvas a due triangoli è immediato e usa solo API native del browser.
+    await nextFrame();
+    const outCanvas=fallbackWarp(state.source,orderPoints(state.points),W,H);
+    await nextFrame();
+
+    state.rectified=outCanvas;
+    state.rectifiedUrl=canvasUrl(state.rectified,.94);
+
+    setStatus('cc2Astatus','Carta raddrizzata. Preparo le linee di centratura…');
+    await nextFrame();
+
+    state.lines=autoInnerLines(state.rectified);
+    state.lineSel='l';
+    setupCanvasB();renderB();renderLineButtons();showOnly('B');updateResult();
+
     const saved=restoreState();
     if(saved&&saved.lines){
-      state.lines={l:saved.lines.l*W,r:saved.lines.r*W,t:saved.lines.t*H,b:saved.lines.b*H};renderB();updateResult();
+      state.lines={l:saved.lines.l*W,r:saved.lines.r*W,t:saved.lines.t*H,b:saved.lines.b*H};
+      renderB();updateResult();
       setStatus('cc2Bstatus','Carta raddrizzata. Ho ripristinato anche le linee di centratura salvate: controllale.','ok');
-    }else setStatus('cc2Bstatus','✓ Carta raddrizzata. Le 4 linee blu sono una proposta automatica: correggile se necessario.','ok');
+    }else{
+      setStatus('cc2Bstatus','✓ Carta raddrizzata. Le 4 linee blu sono una proposta automatica: correggile se necessario.','ok');
+    }
     saveState();
     window.dispatchEvent(new CustomEvent('cardcenter:aligned',{detail:{url:state.rectifiedUrl,sourceUrl:state.sourceUrl,game:state.game}}));
-  }catch(e){setStatus('cc2Astatus','Raddrizzamento non riuscito: '+e.message,'warn')}
-  finally{el('cc2Warp').disabled=false}
+  }catch(e){
+    setStatus('cc2Astatus','Raddrizzamento non riuscito: '+e.message,'warn');
+  }finally{
+    el('cc2Warp').disabled=false;
+  }
 }
 function setupCanvasB(){
   const cv=el('cc2canvasB');cv.width=state.rectified.width;cv.height=state.rectified.height;
