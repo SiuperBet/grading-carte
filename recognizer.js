@@ -64,8 +64,9 @@ function cropBoxForOCR(im,x0,y0,x1,y1,mode){
   var threshold=mode==='threshold';
   for(var i=0;i<p.length;i+=4){
     var g=.299*p[i]+.587*p[i+1]+.114*p[i+2];
-    if(threshold)g=g>145?255:0;
-    else g=Math.max(0,Math.min(255,(g-128)*1.65+128));
+    if(mode==='threshold')g=g>145?255:0;
+    else if(mode==='thresholdInv')g=g>145?0:255;
+    else g=Math.max(0,Math.min(255,(g-128)*1.75+128));
     p[i]=p[i+1]=p[i+2]=g;
   }
   ctx.putImageData(d,0,0);return cv;
@@ -93,6 +94,24 @@ function titleCandidates(text){
 }
 function fixDigitish(s){
   return String(s||'').replace(/[Oo]/g,'0').replace(/[Il|!]/g,'1').replace(/[Ss]/g,'5').replace(/\s+/g,'');
+}
+function attackCandidates(text){
+  var bad=/^(ability|weakness|resistance|retreat|stage|basic|pokemon|pokémon|illustrator|team magma|team aqua)$/i;
+  var out=[];
+  String(text||'').split(/\r?\n/).forEach(function(line){
+    line=cleanOcrLine(line).replace(/\s+(?:\d{1,3}[+x×-]?|[+x×])\s*$/i,'').trim();
+    var words=line.match(/[A-Za-z][A-Za-z'’.-]*/g)||[];
+    if(line.length>=4&&line.length<=34&&words.length>=1&&words.length<=5&&!bad.test(line)){
+      var letters=(line.match(/[A-Za-z]/g)||[]).length;
+      if(letters>=4&&letters/line.length>.55)out.push(line);
+    }
+  });
+  return out.filter(function(x,i,a){return a.indexOf(x)===i}).slice(0,12);
+}
+function parseYear(text){
+  var years=(String(text||'').match(/\b(?:19\d{2}|20\d{2})\b/g)||[]).map(Number)
+    .filter(function(y){return y>=1996&&y<=new Date().getFullYear()+1});
+  return years.length?years[years.length-1]:null;
 }
 function parsePokemon(bottom,all){
   var raw=(bottom+'\n'+all).replace(/[‐‑–—]/g,'-');
@@ -201,23 +220,82 @@ function pokeScore(c,titles,collector,ocr){
   }
   return best;
 }
-async function findPokemon(top,bottom){
-  var all=top+'\n'+bottom,titles=titleCandidates(top),col=parsePokemon(bottom,all);
+function attackScore(card,attacks,titles){
+  var best=0;
+  (card.attacks||[]).forEach(function(a){
+    attacks.forEach(function(t){best=Math.max(best,dice(a.name,t)*1.35)});
+  });
+  titles.forEach(function(t){best=Math.max(best,dice(card.name,t))});
+  return best;
+}
+async function catalogByAttacks(attacks,year,titles,col){
+  if(!attacks||!attacks.length)return [];
+  var sets=await pokeSets();
 
-  // 1) Numero/totale (es. 10/95) è la prova più forte: cerca prima nel catalogo esatto dei set compatibili.
+  if(year){
+    sets=sets.filter(function(s){return String(s.releaseDate||'').slice(0,4)===String(year)});
+  }else if(col&&col.total){
+    sets=sets.filter(function(s){return Number(s.printedTotal)===Number(col.total)||Number(s.total)===Number(col.total)});
+  }else{
+    return [];
+  }
+
+  // Evita una scansione enorme: un anno Pokémon ha pochi set.
+  sets=sets.slice(0,18);
+  var out=[],queue=sets.slice();
+  async function worker(){
+    while(queue.length){
+      var set=queue.shift();
+      try{
+        var cards=await fjson(POKE_RAW_BASE+'cards/en/'+encodeURIComponent(set.id)+'.json');
+        (cards||[]).forEach(function(card){
+          card=Object.assign({},card);
+          card.set=set;
+          var sc=attackScore(card,attacks,titles);
+          if(col&&col.number&&numKey(card.number)===numKey(col.number))sc+=1.0;
+          if(sc>=.72)out.push({card:card,score:sc});
+        });
+      }catch(e){}
+    }
+  }
+  await Promise.all([worker(),worker(),worker(),worker()]);
+  out.sort(function(a,b){return b.score-a.score});
+  return out.slice(0,16);
+}
+async function findPokemon(top,bottom,middle,footer){
+  var all=[top,middle,bottom,footer].join('\n');
+  var titles=titleCandidates(top);
+  var col=parsePokemon(bottom+'\n'+footer,all);
+  var attacks=attackCandidates(middle);
+  var year=parseYear(footer+'\n'+bottom+'\n'+all);
+
+  // 1) Numero/totale è la prova più forte.
   var exact=[];
   try{exact=await catalogByCollector(col,titles)}catch(e){}
   if(exact.length){
     var topRaw=exact.slice(0,10),enriched=[];
     for(var i=0;i<topRaw.length;i++){
       var card=await enrichRawCandidate(topRaw[i].card);
-      enriched.push({card:card,score:pokeScore(card,titles,col,all)+1.2});
+      enriched.push({card:card,score:pokeScore(card,titles,col,all)+1.2+attackScore(topRaw[i].card,attacks,titles)});
     }
     enriched.sort(function(a,b){return b.score-a.score});
-    return {cards:enriched.slice(0,18).map(function(x){return x.card}),det:{titles:titles,collector:col,method:'numero/set'}};
+    return {cards:enriched.slice(0,18).map(function(x){return x.card}),det:{titles:titles,collector:col,attacks:attacks,year:year,method:'numero/set'}};
   }
 
-  // 2) Fallback TCGdex: numero oppure nome.
+  // 2) Se il titolo è illeggibile, usa attacchi + anno (o totale set).
+  var byAtk=[];
+  try{byAtk=await catalogByAttacks(attacks,year,titles,col)}catch(e){}
+  if(byAtk.length){
+    var enrichedAtk=[];
+    for(var j=0;j<Math.min(10,byAtk.length);j++){
+      var ec=await enrichRawCandidate(byAtk[j].card);
+      enrichedAtk.push({card:ec,score:byAtk[j].score});
+    }
+    enrichedAtk.sort(function(a,b){return b.score-a.score});
+    return {cards:enrichedAtk.map(function(x){return x.card}),det:{titles:titles,collector:col,attacks:attacks,year:year,method:'attacchi/anno'}};
+  }
+
+  // 3) Fallback TCGdex per numero oppure nome.
   var briefs=[];
   try{
     if(col.number&&window.tcgDexSearchPokemonBriefs){
@@ -231,7 +309,7 @@ async function findPokemon(top,bottom){
   }catch(e){}
 
   if(!briefs.length||!window.tcgDexFetchLegacyCard){
-    return {cards:[],det:{titles:titles,collector:col,method:'nessuno'}};
+    return {cards:[],det:{titles:titles,collector:col,attacks:attacks,year:year,method:'nessuno'}};
   }
 
   var scored=briefs.map(function(b){
@@ -253,7 +331,7 @@ async function findPokemon(top,bottom){
   }
   await Promise.all([worker(),worker(),worker(),worker(),worker(),worker()]);
   full.sort(function(a,b){return b.score-a.score});
-  return {cards:full.slice(0,18).map(function(x){return x.card}),det:{titles:titles,collector:col,method:'tcgdex'}};
+  return {cards:full.slice(0,18).map(function(x){return x.card}),det:{titles:titles,collector:col,attacks:attacks,year:year,method:'tcgdex'}};
 }
 function ygoScore(c,titles,setCode,ocr){
   var best=0;titles.forEach(function(t){best=Math.max(best,dice(c.name,t))});best=Math.max(best,dice(c.name,ocr)*.8);
@@ -345,51 +423,74 @@ async function recognize(src){
   recBusy=true;recResults=[];rq('rresults').innerHTML='';rq('rocr').value='';
   try{
     recUrl=src;rq('rpreview').src=src;rq('rpreview').style.display='';
-    setStatus('Preparo le zone importanti della carta…');
+    setStatus('Preparo nome, attacchi e numero della carta…');
     var im=await loadImage(src),game=rq('rgame').value;
 
-    var topA=cropBoxForOCR(im,.02,.015,.98,.17,'normal');
-    var topB=cropBoxForOCR(im,.02,.015,.98,.17,'threshold');
-    var bottomWide=cropBoxForOCR(im,.02,.76,.98,.995,'number');
-    var bottomRight=cropBoxForOCR(im,.48,.80,.995,.995,'number');
+    var topA=cropBoxForOCR(im,.015,.01,.985,.18,'normal');
+    var middle=cropBoxForOCR(im,.02,.48,.98,.84,'normal');
+    var numA=cropBoxForOCR(im,.66,.88,.998,.998,'number');
+    var numB=cropBoxForOCR(im,.66,.88,.998,.998,'threshold');
+    var numC=cropBoxForOCR(im,.66,.88,.998,.998,'thresholdInv');
+    var footer=cropBoxForOCR(im,.02,.86,.98,.998,'normal');
 
     setStatus('Carico il motore OCR gratuito…');
     await loadScript();
-    setStatus('Leggo separatamente nome e numero…');
     var worker=await Tesseract.createWorker('eng');
     try{
       await worker.setParameters({tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
+      setStatus('Leggo il nome…');
       var a=await worker.recognize(topA);
-      setStatus('Controllo una seconda lettura del titolo…');
-      var a2=await worker.recognize(topB);
+
+      await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
+      setStatus('Leggo gli attacchi…');
+      var m=await worker.recognize(middle);
+
+      await worker.setParameters({
+        tessedit_pageseg_mode:'7',
+        preserve_interword_spaces:'1',
+        tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/\\-|! '
+      });
+      setStatus('Leggo il numero della carta con più controlli…');
+      var n1=await worker.recognize(numA);
+      var n2=await worker.recognize(numB);
+      var n3=await worker.recognize(numC);
 
       await worker.setParameters({
         tessedit_pageseg_mode:'6',
         preserve_interword_spaces:'1',
-        tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/\\-|! '
+        tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/\\-|!©., '
       });
-      setStatus('Leggo numero carta e numero del set…');
-      var b=await worker.recognize(bottomRight);
-      var b2=await worker.recognize(bottomWide);
+      setStatus('Leggo anno e dati in fondo…');
+      var ft=await worker.recognize(footer);
 
-      var topText=[a&&a.data&&a.data.text||'',a2&&a2.data&&a2.data.text||''].join('\n');
-      var bottomText=[b&&b.data&&b.data.text||'',b2&&b2.data&&b2.data.text||''].join('\n');
-      var parsed=game==='poke'?parsePokemon(bottomText,topText+'\n'+bottomText):null;
-      setStatus(game==='poke'&&parsed&&parsed.number
-        ?'Letto '+parsed.number+(parsed.total?'/'+parsed.total:'')+'. Incrocio numero, set e nome…'
-        :'Confronto il testo letto con il catalogo…');
+      var topText=a&&a.data&&a.data.text||'';
+      var middleText=m&&m.data&&m.data.text||'';
+      var bottomText=[n1&&n1.data&&n1.data.text||'',n2&&n2.data&&n2.data.text||'',n3&&n3.data&&n3.data.text||''].join('\n');
+      var footerText=ft&&ft.data&&ft.data.text||'';
 
-      var data=game==='poke'?await findPokemon(topText,bottomText):await findYgo(topText,bottomText);
-      renderResults(game,data,topText,bottomText);
+      var parsed=game==='poke'?parsePokemon(bottomText+'\n'+footerText,[topText,middleText,bottomText,footerText].join('\n')):null;
+      var attacks=game==='poke'?attackCandidates(middleText):[];
+      var year=game==='poke'?parseYear(footerText):null;
+
+      if(game==='poke'){
+        var bits=[];
+        if(parsed&&parsed.number)bits.push('numero '+parsed.number+(parsed.total?'/'+parsed.total:''));
+        if(attacks.length)bits.push('attacchi: '+attacks.slice(0,2).join(', '));
+        if(year)bits.push('anno '+year);
+        setStatus(bits.length?'Ho letto '+bits.join(' · ')+'. Incrocio i dati…':'Incrocio le parti leggibili con il catalogo…');
+      }else setStatus('Confronto i dati letti con il catalogo…');
+
+      var data=game==='poke'
+        ?await findPokemon(topText,bottomText,middleText,footerText)
+        :await findYgo(topText,bottomText+'\n'+footerText);
+
+      renderResults(game,data,topText,[middleText,bottomText,footerText].join('\n'));
 
       if(recResults.length){
-        var extra='';
-        if(game==='poke'&&data.det&&data.det.collector&&data.det.collector.number){
-          extra=' · numero letto '+data.det.collector.number+(data.det.collector.total?'/'+data.det.collector.total:'');
-        }
-        setStatus('Trovate '+recResults.length+' possibili corrispondenze'+extra+'. Controlla immagine, espansione e numero.');
+        var method=data.det&&data.det.method?' · metodo '+data.det.method:'';
+        setStatus('Trovate '+recResults.length+' possibili corrispondenze'+method+'. Controlla immagine, espansione e numero.');
       }else{
-        setStatus('Non ho trovato una corrispondenza affidabile. Ti mostro solo ciò che ho letto, senza inventare un risultato.',true);
+        setStatus('Non ho trovato una corrispondenza affidabile. Non seleziono automaticamente una carta sbagliata.',true);
       }
     }finally{await worker.terminate()}
   }catch(e){
