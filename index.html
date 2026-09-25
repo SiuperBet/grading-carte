@@ -260,6 +260,7 @@ async function avvia(){
 }
 function salva(url){
   foto[i]=url;
+  if(window.GradingPersist)GradingPersist.savePhoto(i,url);
   if(riprendi!==null){riprendi=null;fine()}
   else{i++;if(i>=STEPS.length)fine();else mostraStep()}
 }
@@ -284,6 +285,7 @@ function fine(){
 }
 function mostraFine(){
   ['start','cap','cent','prezzo','riconosci'].forEach(x=>$(x).classList.add('hide'));
+  if(window.GradingPersist)GradingPersist.saveMeta();
   $('fine').classList.remove('hide');
   $('grid').innerHTML=STEPS.map((s,k)=>foto[k]?`<div><img src="${foto[k]}"><b>${s.t}</b><br><a href="#" onclick="rifai(${k});return false">Rifai</a></div>`:`<div><b>${s.t}</b><br>non scattata</div>`).join('');
 }
