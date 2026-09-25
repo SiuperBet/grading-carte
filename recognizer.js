@@ -838,14 +838,13 @@ async function prepareImportedPhoto(file,source){
   recDetection=null;recCropFound=false;recOcrUrl=null;
   try{
     var blobUrl=URL.createObjectURL(file),im=await loadImage(blobUrl);
-    recOriginalCanvas=downscaleImage(im,1400);
+    recOriginalCanvas=downscaleImage(im,1600);
     try{URL.revokeObjectURL(blobUrl)}catch(e){}
 
-    // La foto mostrata e usata per la centratura è SEMPRE quella completa.
-    recUrl=recOriginalCanvas.toDataURL('image/jpeg',.88);
+    // Nuovo flusso V2: acquisizione = foto completa normalizzata. Nessun ritaglio automatico qui.
+    recUrl=recOriginalCanvas.toDataURL('image/jpeg',.90);
+    recOcrUrl=recUrl;
 
-    // La foto scelta diventa subito il fronte della sessione.
-    // Il salvataggio persistente parte dopo il rendering per non bloccare l'interfaccia.
     try{
       if(typeof foto!=='undefined'){
         foto[0]=recUrl;
@@ -862,29 +861,10 @@ async function prepareImportedPhoto(file,source){
     }catch(e){}
 
     rq('rpreview').src=recUrl;rq('rpreviewWrap').style.display='';
-    await new Promise(function(resolve){rq('rpreview').onload=function(){resolve()};if(rq('rpreview').complete)resolve()});
+    var ov=rq('rDetectOverlay');if(ov){var oc=ov.getContext('2d');oc.clearRect(0,0,ov.width,ov.height)}
     await yieldPaint();
 
-    setStatus('Cerco rapidamente i quattro bordi senza bloccare la pagina…');
-    await yieldPaint();
-    var game=rq('rgame').value==='ygo'?'ygo':'poke';
-    var customDet=quickCardDetect(recOriginalCanvas,game);
-    if(customDet&&customDet.found&&(customDet.confidence||0)>=.38){
-      recDetection={
-        found:true,points:customDet.points,width:recOriginalCanvas.width,height:recOriginalCanvas.height,
-        confidence:customDet.confidence||.38,outerVerified:!!customDet.outerVerified,consensus:false
-      };
-      recCropFound=true;
-      // Per OCR basta un riquadro approssimativo: aggiungiamo molto margine e non tocchiamo mai la foto originale.
-      recOcrUrl=detectedCropCanvas(recOriginalCanvas,recDetection,.085).toDataURL('image/jpeg',.9);
-      drawRecognizerDetection();
-      rq('rDetectLegend').classList.remove('hide');
-      setStatus((recDetection.outerVerified?'✓ Carta individuata':'⚠ Contorno approssimativo')+'. Foto pronta: OCR e centratura lavorano su copie separate e la foto originale resta intatta.');
-    }else{
-      recDetection=null;recCropFound=false;recOcrUrl=recUrl;
-      var ov=rq('rDetectOverlay');if(ov){var oc=ov.getContext('2d');oc.clearRect(0,0,ov.width,ov.height)}
-      setStatus('✓ Foto pronta. Nessun bordo abbastanza sicuro: riconoscimento e centratura useranno la foto completa.');
-    }
+    setStatus('✓ Foto acquisita senza tagli. Per la massima precisione usa “Apri centratura”: il nuovo flusso conferma i 4 angoli, raddrizza la carta e misura la centratura senza modificare l’originale.');
   }catch(e){
     setStatus('Non riesco a caricare questa foto: '+(e&&e.message?e.message:'errore sconosciuto'),true);
   }
@@ -910,16 +890,10 @@ window.riconosciFotoImportata=async function(){
 window.usaFotoImportataPerCentratura=function(){
   if(!recUrl){setStatus('Prima scegli una foto.',true);return}
   try{
-    // La foto importata non deve avviare OpenCV automaticamente.
-    window.__galleryCenterOnce=true;
-    window.__galleryCropFound=recCropFound;
-    window.__galleryDetectedCorners=recDetection&&recDetection.found&&(recDetection.outerVerified||(recDetection.confidence||0)>=.58)
-      ?recDetection.points.map(function(p){return {x:p.x/recDetection.width,y:p.y/recDetection.height}})
-      :null;
-    var g=document.getElementById('gioco');
-    if(g)g.value=rq('rgame').value==='ygo'?'59,86':'63,88';
     rq('riconosci').classList.add('hide');
-    if(typeof apriCent==='function')apriCent(recUrl);
+    if(window.CardCenterV2&&CardCenterV2.open){
+      CardCenterV2.open(recUrl,{game:rq('rgame').value==='ygo'?'ygo':'poke',kind:'front'});
+    }else if(typeof apriCent==='function')apriCent(recUrl);
   }catch(e){setStatus('Non riesco ad aprire la centratura: '+e.message,true)}
 }
 window.usaFotoImportataComeFronte=function(){
@@ -950,6 +924,17 @@ rq('rmanualBtn').addEventListener('click',function(){
   var q=rq('rmanual').value.trim();if(!q)return;
   rq('riconosci').classList.add('hide');rq('prezzo').classList.remove('hide');
   rq('pgioco').value=rq('rgame').value;rq('pq').value=q;cercaPrezzo();
+});
+window.addEventListener('cardcenter:aligned',function(ev){
+  var d=ev&&ev.detail;if(!d||!d.url)return;
+  recOcrUrl=d.url;
+  setStatus('✓ Carta raddrizzata pronta. Il prossimo riconoscimento userà questa copia allineata, mentre la foto originale resta salvata.');
+});
+window.addEventListener('cardcenter:useocr',function(ev){
+  var d=ev&&ev.detail;if(!d||!d.url)return;
+  recOcrUrl=d.url;
+  rq('riconosci').classList.remove('hide');
+  setTimeout(function(){recognize(recOcrUrl)},0);
 });
 window.addEventListener('resize',function(){if(recDetection&&recDetection.found)setTimeout(drawRecognizerDetection,30)});
 })();
