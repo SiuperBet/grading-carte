@@ -566,91 +566,159 @@ function quickCardDetect(source,game){
   var sw=source.width,sh=source.height;
   if(!sw||!sh)return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  var max=340,sc=Math.min(1,max/Math.max(sw,sh));
-  var w=Math.max(90,Math.round(sw*sc)),h=Math.max(90,Math.round(sh*sc));
-  var c=document.createElement('canvas');c.width=w;c.height=h;
-  var ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,w,h);
+  var max=360,sc=Math.min(1,max/Math.max(sw,sh));
+  var w=Math.max(100,Math.round(sw*sc)),h=Math.max(100,Math.round(sh*sc));
+  var cv=document.createElement('canvas');cv.width=w;cv.height=h;
+  var ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,w,h);
   var d=ctx.getImageData(0,0,w,h).data,g=new Float32Array(w*h);
   for(var i=0,p=0;i<g.length;i++,p+=4)g[i]=.299*d[p]+.587*d[p+1]+.114*d[p+2];
 
+  function vEdge(x,y){
+    x=Math.max(2,Math.min(w-3,Math.round(x)));y=Math.max(1,Math.min(h-2,Math.round(y)));
+    return Math.abs(g[y*w+x+1]-g[y*w+x-1]);
+  }
+  function hEdge(x,y){
+    x=Math.max(1,Math.min(w-2,Math.round(x)));y=Math.max(2,Math.min(h-3,Math.round(y)));
+    return Math.abs(g[(y+1)*w+x]-g[(y-1)*w+x]);
+  }
+  function median(a){
+    if(!a.length)return 0;var b=a.slice().sort(function(x,y){return x-y}),m=Math.floor(b.length/2);
+    return b.length%2?b[m]:(b[m-1]+b[m])/2;
+  }
+  function vSupport(x,yt,yb){
+    var a=[];for(var k=0;k<17;k++){var y=yt+(yb-yt)*(.05+.90*k/16);a.push(vEdge(x,y))}
+    var med=median(a),strong=a.filter(function(v){return v>=Math.max(8,med*.72)}).length/a.length;
+    return {med:med,strong:strong,score:med*(.65+.35*strong)};
+  }
+  function hSupport(y,xl,xr){
+    var a=[];for(var k=0;k<17;k++){var x=xl+(xr-xl)*(.05+.90*k/16);a.push(hEdge(x,y))}
+    var med=median(a),strong=a.filter(function(v){return v>=Math.max(8,med*.72)}).length/a.length;
+    return {med:med,strong:strong,score:med*(.65+.35*strong)};
+  }
+
+  // Profili globali solo per generare candidati; la scelta finale usa continuità lungo tutto il lato.
   var vx=new Float32Array(w),hy=new Float32Array(h);
-  var x0=Math.round(w*.02),x1=Math.round(w*.98),y0=Math.round(h*.02),y1=Math.round(h*.98);
-  for(var y=y0;y<y1;y+=2){
-    var row=y*w;
-    for(var x=2;x<w-2;x++)vx[x]+=Math.abs(g[row+x+1]-g[row+x-1]);
+  for(var y=Math.round(h*.025);y<h*.975;y+=2){
+    var row=y*w;for(var x=2;x<w-2;x++)vx[x]+=Math.abs(g[row+x+1]-g[row+x-1]);
   }
   for(var yy=2;yy<h-2;yy++){
-    var row2=yy*w;
-    for(var xx=x0;xx<x1;xx+=2)hy[yy]+=Math.abs(g[row2+xx+w]-g[row2+xx-w]);
+    var row2=yy*w;for(var xx=Math.round(w*.025);xx<w*.975;xx+=2)hy[yy]+=Math.abs(g[row2+xx+w]-g[row2+xx-w]);
   }
   function smooth(a){
     var b=new Float32Array(a.length);
     for(var i=2;i<a.length-2;i++)b[i]=(a[i-2]+2*a[i-1]+3*a[i]+2*a[i+1]+a[i+2])/9;
     return b;
   }
-  vx=smooth(vx);hy=smooth(hy);
   function topPeaks(a,margin,count){
-    var arr=[];for(var i=margin;i<a.length-margin;i++)arr.push({p:i,s:a[i]});
+    a=smooth(a);var arr=[];
+    for(var i=margin;i<a.length-margin;i++)arr.push({p:i,s:a[i]});
     arr.sort(function(a,b){return b.s-a.s});
-    var out=[],gap=Math.max(5,Math.round(a.length*.03));
+    var out=[],gap=Math.max(4,Math.round(a.length*.025));
     for(var k=0;k<arr.length&&out.length<count;k++){
       if(out.every(function(o){return Math.abs(o.p-arr[k].p)>=gap}))out.push(arr[k]);
     }
     return out;
   }
-  var xp=topPeaks(vx,Math.max(3,Math.round(w*.02)),24);
-  var yp=topPeaks(hy,Math.max(3,Math.round(h*.02)),24);
+
+  var xp=topPeaks(vx,Math.max(4,Math.round(w*.025)),28);
+  var yp=topPeaks(hy,Math.max(4,Math.round(h*.025)),28);
   var ratio=game==='ygo'?59/86:63/88,best=null;
+
   for(var a=0;a<xp.length;a++)for(var b=a+1;b<xp.length;b++){
     var lx=Math.min(xp[a].p,xp[b].p),rx=Math.max(xp[a].p,xp[b].p),rw=rx-lx;
-    if(rw<w*.10||rw>w*.90)continue;
+    if(rw<w*.12||rw>w*.88)continue;
     for(var u=0;u<yp.length;u++)for(var v=u+1;v<yp.length;v++){
       var ty=Math.min(yp[u].p,yp[v].p),by=Math.max(yp[u].p,yp[v].p),rh=by-ty;
-      if(rh<h*.14||rh>h*.95)continue;
-      var rr=rw/rh,re=Math.abs(rr-ratio)/ratio;if(re>.25)continue;
-      var area=rw*rh/(w*h);if(area<.025||area>.86)continue;
+      if(rh<h*.16||rh>h*.92)continue;
+
+      var rr=rw/rh,re=Math.abs(rr-ratio)/ratio;
+      if(re>.16)continue;
+      var area=rw*rh/(w*h);if(area<.035||area>.80)continue;
+
+      var ls=vSupport(lx,ty,by),rs=vSupport(rx,ty,by),ts=hSupport(ty,lx,rx),bs=hSupport(by,lx,rx);
+      var minContinuity=Math.min(ls.strong,rs.strong,ts.strong,bs.strong);
+      if(minContinuity<.40)continue;
+
+      var side=Math.pow(Math.max(.1,ls.score*rs.score*ts.score*bs.score),.25);
       var cx=(lx+rx)/2,cy=(ty+by)/2,ce=Math.hypot((cx-w/2)/w,(cy-h/2)/h);
-      var edge=xp[a].s+xp[b].s+yp[u].s+yp[v].s;
-      var score=edge*(1-re*.9)*(1-Math.min(.36,ce*.48))*(.82+Math.min(.35,area));
-      if(!best||score>best.score)best={lx:lx,rx:rx,ty:ty,by:by,rw:rw,rh:rh,score:score,re:re,area:area};
+
+      // Bordi troppo vicini al frame della FOTO sono sospetti: non li vietiamo, ma li penalizziamo molto.
+      var fm=Math.min(lx/w,(w-rx)/w,ty/h,(h-by)/h);
+      var frameFactor=fm<.018?.38:fm<.035?.62:fm<.055?.82:1;
+      var score=side*(1-re*1.7)*(1-Math.min(.28,ce*.38))*frameFactor*(.80+.20*Math.min(1,area/.35));
+      if(!best||score>best.score)best={lx:lx,rx:rx,ty:ty,by:by,rw:rw,rh:rh,score:score,re:re,area:area,sides:[ls,rs,ts,bs]};
     }
   }
   if(!best)return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  // Rifinisce ogni lato su più sezioni, così segue la prospettiva anziché usare un rettangolo fisso.
-  function vEdge(x,y){x=Math.max(2,Math.min(w-3,x|0));y=Math.max(1,Math.min(h-2,y|0));return Math.abs(g[y*w+x+1]-g[y*w+x-1])}
-  function hEdge(x,y){x=Math.max(1,Math.min(w-2,x|0));y=Math.max(2,Math.min(h-3,y|0));return Math.abs(g[(y+1)*w+x]-g[(y-1)*w+x])}
-  var leftPts=[],rightPts=[],topPts=[],bottomPts=[];
-  var xr=Math.max(5,Math.round(best.rw*.10)),yr=Math.max(5,Math.round(best.rh*.10));
-  for(var si=0;si<13;si++){
-    var yy=best.ty+best.rh*(.08+.84*si/12),bl={s:-1,x:best.lx},br={s:-1,x:best.rx};
-    for(var xx=Math.max(2,best.lx-xr);xx<=Math.min(w-3,best.lx+xr);xx++){var es=vEdge(xx,yy);if(es>bl.s)bl={s:es,x:xx}}
-    for(var xx2=Math.max(2,best.rx-xr);xx2<=Math.min(w-3,best.rx+xr);xx2++){var es2=vEdge(xx2,yy);if(es2>br.s)br={s:es2,x:xx2}}
-    leftPts.push({x:bl.x,y:yy,s:bl.s});rightPts.push({x:br.x,y:yy,s:br.s});
+  // Rifinitura locale: resta VICINO al lato candidato e premia continuità; non può saltare al bordo della foto.
+  function bestV(base,y,range,prev){
+    var bestX=base,bestS=-1,lo=Math.max(3,Math.round(base-range)),hi=Math.min(w-4,Math.round(base+range));
+    for(var x=lo;x<=hi;x++){
+      var e=vEdge(x,y),pen=Math.abs(x-base)*1.1+(prev==null?0:Math.abs(x-prev)*.55),s=e-pen;
+      if(s>bestS){bestS=s;bestX=x}
+    }
+    return {x:bestX,s:vEdge(bestX,y)};
   }
-  for(var sj=0;sj<13;sj++){
-    var xx3=best.lx+best.rw*(.08+.84*sj/12),bt={s:-1,y:best.ty},bb={s:-1,y:best.by};
-    for(var yy2=Math.max(2,best.ty-yr);yy2<=Math.min(h-3,best.ty+yr);yy2++){var es3=hEdge(xx3,yy2);if(es3>bt.s)bt={s:es3,y:yy2}}
-    for(var yy3=Math.max(2,best.by-yr);yy3<=Math.min(h-3,best.by+yr);yy3++){var es4=hEdge(xx3,yy3);if(es4>bb.s)bb={s:es4,y:yy3}}
-    topPts.push({x:xx3,y:bt.y,s:bt.s});bottomPts.push({x:xx3,y:bb.y,s:bb.s});
+  function bestH(base,x,range,prev){
+    var bestY=base,bestS=-1,lo=Math.max(3,Math.round(base-range)),hi=Math.min(h-4,Math.round(base+range));
+    for(var y=lo;y<=hi;y++){
+      var e=hEdge(x,y),pen=Math.abs(y-base)*1.1+(prev==null?0:Math.abs(y-prev)*.55),s=e-pen;
+      if(s>bestS){bestS=s;bestY=y}
+    }
+    return {y:bestY,s:hEdge(x,bestY)};
+  }
+
+  var leftPts=[],rightPts=[],topPts=[],bottomPts=[];
+  var xr=Math.max(3,Math.round(best.rw*.055)),yr=Math.max(3,Math.round(best.rh*.055));
+  var pl=null,pr=null,pt=null,pb=null;
+  for(var si=0;si<15;si++){
+    var y=best.ty+best.rh*(.06+.88*si/14);
+    var l=bestV(best.lx,y,xr,pl),r=bestV(best.rx,y,xr,pr);pl=l.x;pr=r.x;
+    leftPts.push({x:l.x,y:y,s:l.s});rightPts.push({x:r.x,y:y,s:r.s});
+  }
+  for(var sj=0;sj<15;sj++){
+    var x=best.lx+best.rw*(.06+.88*sj/14);
+    var t=bestH(best.ty,x,yr,pt),bb=bestH(best.by,x,yr,pb);pt=t.y;pb=bb.y;
+    topPts.push({x:x,y:t.y,s:t.s});bottomPts.push({x:x,y:bb.y,s:bb.s});
   }
   function robust(list){
     var ss=list.map(function(p){return p.s}).sort(function(a,b){return a-b});
-    var cut=ss[Math.floor(ss.length*.35)]||0;
+    var cut=ss[Math.floor(ss.length*.30)]||0;
     return list.filter(function(p){return p.s>=cut});
   }
+
   var L=fitXofY(robust(leftPts)),R=fitXofY(robust(rightPts)),T=fitYofX(robust(topPts)),B=fitYofX(robust(bottomPts));
   if(!L||!R||!T||!B)return {found:false,points:null,confidence:0,width:sw,height:sh};
+
   var pts=[intersectVH(L,T),intersectVH(R,T),intersectVH(R,B),intersectVH(L,B)];
   if(pts.some(function(p){return !p||!Number.isFinite(p.x)||!Number.isFinite(p.y)}))return {found:false,points:null,confidence:0,width:sw,height:sh};
 
-  // Espansione conservativa del 2.2%: meglio includere qualche pixel di sfondo che tagliare il bordo della carta.
-  pts=expandQuad(pts,1.022,w,h);
+  // Per la CENTRATURA non espandiamo MAI i punti: devono coincidere col bordo reale.
+  var topW=Math.hypot(pts[1].x-pts[0].x,pts[1].y-pts[0].y);
+  var botW=Math.hypot(pts[2].x-pts[3].x,pts[2].y-pts[3].y);
+  var leftH=Math.hypot(pts[3].x-pts[0].x,pts[3].y-pts[0].y);
+  var rightH=Math.hypot(pts[2].x-pts[1].x,pts[2].y-pts[1].y);
+  var geomRatio=((topW+botW)/2)/Math.max(1,(leftH+rightH)/2);
+  var geomErr=Math.abs(geomRatio-ratio)/ratio;
   var area=polyArea(pts)/(w*h);
-  if(area<.02||area>.88)return {found:false,points:null,confidence:0,width:sw,height:sh};
+
+  // Lati opposti devono avere lunghezze compatibili: evita quadrilateri presi tra bordo foto e bordo carta.
+  var oppW=Math.min(topW,botW)/Math.max(topW,botW);
+  var oppH=Math.min(leftH,rightH)/Math.max(leftH,rightH);
+  var frameMargin=Math.min(
+    pts[0].x,pts[3].x,w-pts[1].x,w-pts[2].x,
+    pts[0].y,pts[1].y,h-pts[2].y,h-pts[3].y
+  )/Math.min(w,h);
+
+  if(area<.03||area>.82||geomErr>.13||oppW<.82||oppH<.82)return {found:false,points:null,confidence:0,width:sw,height:sh};
+
+  var support=(best.sides[0].strong+best.sides[1].strong+best.sides[2].strong+best.sides[3].strong)/4;
+  var conf=(1-Math.min(1,geomErr/.13))*.30+Math.min(1,support)*.45+Math.min(1,area/.45)*.25;
+  if(frameMargin<.012)conf*=.45;else if(frameMargin<.025)conf*=.72;
+
   var fullPts=pts.map(function(p){return {x:p.x/sc,y:p.y/sc}});
-  var conf=Math.max(0,Math.min(1,(1-best.re)*(.40+Math.min(.60,area*2.7))));
-  return {found:true,points:fullPts,confidence:conf,width:sw,height:sh};
+  return {found:true,points:fullPts,confidence:Math.max(0,Math.min(1,conf)),width:sw,height:sh};
 }
 function detectedCropCanvas(source,det,padFactor){
   if(!det||!det.found||!det.points)return source;
@@ -699,7 +767,7 @@ async function prepareImportedPhoto(file,source){
     await yieldPaint();
     var game=rq('rgame').value==='ygo'?'ygo':'poke';
     recDetection=quickCardDetect(recOriginalCanvas,game);
-    if(recDetection&&recDetection.found&&(recDetection.confidence||0)<.38)recDetection={found:false,points:null,confidence:recDetection.confidence||0,width:recOriginalCanvas.width,height:recOriginalCanvas.height};
+    if(recDetection&&recDetection.found&&(recDetection.confidence||0)<.52)recDetection={found:false,points:null,confidence:recDetection.confidence||0,width:recOriginalCanvas.width,height:recOriginalCanvas.height};
     recCropFound=!!(recDetection&&recDetection.found);
 
     if(recCropFound){
