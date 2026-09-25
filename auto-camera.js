@@ -224,5 +224,5 @@ function detectBorders(canvas,dim,px){
 }
 function resetStability(){stable=0;lastNorm=null;autoLock=false;var o=overlay();if(o)o.getContext('2d').clearRect(0,0,o.width,o.height)}
 
-window.AutoCardVision={load:loadCV,live:live,cropCanvas:cropCanvas,cornersForCanvas:cornersForCanvas,detectBorders:detectBorders,reset:resetStability};
+window.AutoCardVision={load:loadCV,detectCard:detect,live:live,cropCanvas:cropCanvas,cornersForCanvas:cornersForCanvas,detectBorders:detectBorders,reset:resetStability};
 })();
