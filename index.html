@@ -54,7 +54,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 <header class="apphead">
   <div>
     <h1>📸 Card Lab</h1>
-    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione · <span style="opacity:.65">Build 2026.09.25.18</span></div>
+    <div class="subtitle">Fotografia · centratura · riconoscimento · valori · collezione · <span style="opacity:.65">Build 2026.09.25.19</span></div>
   </div>
   <div class="topactions">
     <button class="sec" onclick="location.href='album.html'">📚 Album</button>
@@ -175,7 +175,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
     <div class="vb">
       <button class="sec" onclick="zoomV(VA,1.6)">＋</button>
       <button class="sec" onclick="zoomV(VA,1/1.6)">−</button>
-      <button class="sec" onclick="resetV(VA)">Vista intera</button>
+      <button class="sec" onclick="resetV(VA)">▣ Mostra tutta la foto</button>
       <button class="sec" id="mdA" onclick="modo(VA,'mdA')">☝ Muovo il punto</button>
     </div>
     <button id="btnR" onclick="raddrizza()">Raddrizza</button>
@@ -339,7 +339,9 @@ function setSrc(V,src){
 }
 function clampV(V){V.cx=Math.min(Math.max(V.cx,0),V.src.width);V.cy=Math.min(Math.max(V.cy,0),V.src.height)}
 function vRender(V){
-  const cv=V.cv,c=cv.getContext('2d'),z=zV(V),f=cv.getBoundingClientRect().width/cv.width||1;
+  const cv=V.cv,c=cv.getContext('2d');
+  if(V.k<=1.001&&V.src){V.k=1;V.cx=V.src.width/2;V.cy=V.src.height/2}
+  const z=zV(V),f=cv.getBoundingClientRect().width/cv.width||1;
   c.setTransform(1,0,0,1,0,0);c.fillStyle='#111';c.fillRect(0,0,cv.width,cv.height);
   c.setTransform(z,0,0,z,cv.width/2-V.cx*z,cv.height/2-V.cy*z);
   c.drawImage(V.src,0,0);
@@ -422,7 +424,7 @@ function apriCent(url){
           x:Math.max(0,Math.min(WK.width-1,p.x*WK.width)),
           y:Math.max(0,Math.min(WK.height-1,p.y*WK.height))
         }));
-        TG=0;dA();
+        TG=0;resetV(VA);dA();
         const nearFrame=PTS.some(p=>p.x<WK.width*.008||p.x>WK.width*.992||p.y<WK.height*.008||p.y>WK.height*.992);
         if(nearFrame){
           PTS=[null,null,null,null];TG=0;dA();
@@ -887,8 +889,8 @@ $('file').onchange=e=>{
   im.src=URL.createObjectURL(f);e.target.value='';
 };
 </script>
-<script src="auto-camera.js?v=20260925-18"></script>
-<script src="recognizer.js?v=20260925-18"></script>
-<script src="grading-state.js?v=20260925-18"></script>
+<script src="auto-camera.js?v=20260925-19"></script>
+<script src="recognizer.js?v=20260925-19"></script>
+<script src="grading-state.js?v=20260925-19"></script>
 </body>
 </html>
