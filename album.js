@@ -5,10 +5,12 @@ var $=function(id){return document.getElementById(id)};
 var OWN_KEY='gradingCarte.collection.v2';
 var SET_CACHE_KEY='gradingCarte.sets.v3.';
 var SET_STATS_KEY='gradingCarte.setStats.v1';
+var UI_KEY='gradingCarte.albumUI.v2';
 var owned=loadOwned();
 var setStats=loadSetStats();
+var ui=loadUI(),restoreSetId=ui.setId||null,didRestoreSet=false;
 var collator=new Intl.Collator('it',{numeric:true,sensitivity:'base'});
-var S={game:'poke',sets:[],shownSets:[],set:null,cards:[],filter:'all',loadInfo:null};
+var S={game:ui.game||'poke',sets:[],shownSets:[],set:null,cards:[],filter:ui.filter||'all',loadInfo:null};
 
 function loadOwned(){
   try{
@@ -27,6 +29,27 @@ function loadSetStats(){
   }catch(e){return {}}
 }
 function saveSetStats(){try{localStorage.setItem(SET_STATS_KEY,JSON.stringify(setStats))}catch(e){}}
+function loadUI(){try{return JSON.parse(localStorage.getItem(UI_KEY)||'{}')||{}}catch(e){return {}}}
+function saveUI(){
+  try{
+    localStorage.setItem(UI_KEY,JSON.stringify({
+      game:S.game,setId:S.set&&S.set.id||restoreSetId||null,filter:S.filter,
+      setSearch:$('setSearch')&&$('setSearch').value||'',setSort:$('setSort')&&$('setSort').value||'date',setDir:$('setDir')&&$('setDir').value||'desc',
+      cardSearch:$('cardSearch')&&$('cardSearch').value||'',cardSort:$('cardSort')&&$('cardSort').value||'number',cardDir:$('cardDir')&&$('cardDir').value||'asc',
+      scrollY:window.scrollY||0
+    }));
+  }catch(e){}
+}
+function applyUIControls(){
+  $('game').value=S.game;
+  if(ui.setSearch!=null)$('setSearch').value=ui.setSearch;
+  if(ui.setSort)$('setSort').value=ui.setSort;
+  if(ui.setDir)$('setDir').value=ui.setDir;
+  if(ui.cardSearch!=null)$('cardSearch').value=ui.cardSearch;
+  if(ui.cardSort)$('cardSort').value=ui.cardSort;
+  if(ui.cardDir)$('cardDir').value=ui.cardDir;
+  document.querySelectorAll('[data-filter]').forEach(function(x){x.classList.toggle('active',x.dataset.filter===S.filter)});
+}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
 function n(v){var x=Number(v);return Number.isFinite(x)&&x>0?x:null}
@@ -103,6 +126,7 @@ async function loadSets(){
   if(cached){
     S.sets=cached;applySetSearch();
     $('status').textContent='Espansioni caricate dalla cache locale.';
+    restoreSetIfNeeded();
     return;
   }
   try{
@@ -120,11 +144,20 @@ async function loadSets(){
     writeSetCache(S.game,S.sets);
     applySetSearch();
     $('status').textContent=S.sets.length+' espansioni disponibili.';
+    restoreSetIfNeeded();
   }catch(e){
     $('status').textContent='Errore nel caricamento delle espansioni: '+(e.name==='AbortError'?'tempo scaduto':e.message)+'. Riprova più tardi.';
   }
 }
 
+function restoreSetIfNeeded(){
+  if(didRestoreSet||!restoreSetId)return;
+  var idx=S.shownSets.findIndex(function(x){return x.id===restoreSetId});
+  if(idx>=0){
+    didRestoreSet=true;$('setSelect').value=String(idx);
+    setTimeout(loadCards,0);
+  }
+}
 function compareSets(a,b,mode){
   if(mode==='name')return collator.compare(a.name,b.name);
   if(mode==='code')return collator.compare(a.code||a.id,b.code||b.id);
@@ -163,6 +196,7 @@ async function loadCards(){
   if(idx==='')return;
   S.set=S.shownSets[Number(idx)];
   if(!S.set)return;
+  restoreSetId=S.set.id;saveUI();
   $('setPanel').style.display='';
   $('setTitle').textContent=S.set.name;
   updateSetMeta();
@@ -179,7 +213,8 @@ async function loadCards(){
       else S.cards=await loadYgoCards(S.set);
       sessionPut(ck,{cards:S.cards,info:S.loadInfo});
     }
-    $('cardSearch').value='';
+    if(!(didRestoreSet&&ui.cardSearch!=null))$('cardSearch').value='';
+    else $('cardSearch').value=ui.cardSearch;
     updateSetStats();
     render();
     updateSetMeta();
@@ -354,17 +389,17 @@ async function importCollection(file){
   }catch(e){$('status').textContent='Importazione non riuscita: '+e.message}
 }
 
-$('game').addEventListener('change',function(){S.game=this.value;S.set=null;loadSets()});
-$('setSearch').addEventListener('input',function(){applySetSearch()});
-$('setSort').addEventListener('change',function(){applySetSearch(S.set&&S.set.id)});
-$('setDir').addEventListener('change',function(){applySetSearch(S.set&&S.set.id)});
-$('setSelect').addEventListener('change',loadCards);
-$('cardSearch').addEventListener('input',render);
-$('cardSort').addEventListener('change',render);
-$('cardDir').addEventListener('change',render);
+$('game').addEventListener('change',function(){S.game=this.value;S.set=null;restoreSetId=null;didRestoreSet=true;saveUI();loadSets()});
+$('setSearch').addEventListener('input',function(){applySetSearch();saveUI()});
+$('setSort').addEventListener('change',function(){applySetSearch(S.set&&S.set.id);saveUI()});
+$('setDir').addEventListener('change',function(){applySetSearch(S.set&&S.set.id);saveUI()});
+$('setSelect').addEventListener('change',function(){loadCards();saveUI()});
+$('cardSearch').addEventListener('input',function(){render();saveUI()});
+$('cardSort').addEventListener('change',function(){render();saveUI()});
+$('cardDir').addEventListener('change',function(){render();saveUI()});
 document.querySelectorAll('[data-filter]').forEach(function(b){b.addEventListener('click',function(){
   document.querySelectorAll('[data-filter]').forEach(function(x){x.classList.remove('active')});
-  this.classList.add('active');S.filter=this.dataset.filter;render();
+  this.classList.add('active');S.filter=this.dataset.filter;render();saveUI();
 })});
 $('cards').addEventListener('click',function(e){
   var b=e.target.closest('button');
@@ -388,5 +423,8 @@ $('exportBtn').onclick=exportCollection;
 $('importBtn').onclick=function(){$('importFile').click()};
 $('importFile').onchange=function(){if(this.files&&this.files[0])importCollection(this.files[0]);this.value=''};
 if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw-card-cache.js').catch(function(){});
+applyUIControls();
+window.addEventListener('pagehide',saveUI);
 loadSets();
+if(ui.scrollY)setTimeout(function(){window.scrollTo(0,Number(ui.scrollY)||0)},700);
 })();
