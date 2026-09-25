@@ -74,7 +74,7 @@ async function compress(url){
   }catch(e){return url}
 }
 function visibleView(){
-  var ids=['start','cap','fine','prezzo','riconosci','cent'];
+  var ids=['start','cap','fine','grading','prezzo','riconosci','cent'];
   for(var i=0;i<ids.length;i++){var e=document.getElementById(ids[i]);if(e&&!e.classList.contains('hide'))return ids[i]}
   return 'start';
 }
@@ -117,7 +117,17 @@ async function restore(){
 }
 async function resetSession(){
   if(!confirm('Azzerare foto, misure e avanzamento di questa analisi? La tua collezione NON verrà cancellata.'))return;
-  await clearPhotos();localStorage.removeItem(META_KEY);
+  await clearPhotos();
+  localStorage.removeItem(META_KEY);
+  localStorage.removeItem('cardlab.grading.center.front');
+  localStorage.removeItem('cardlab.grading.center.back');
+  localStorage.removeItem('cardlab.grading.report.v1');
+  try{
+    for(var n=localStorage.length-1;n>=0;n--){
+      var k=localStorage.key(n);
+      if(k&&k.indexOf('cardlab.center.v2.')===0)localStorage.removeItem(k);
+    }
+  }catch(e){}
   location.reload();
 }
 window.resetGradingSession=resetSession;
