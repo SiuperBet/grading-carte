@@ -306,7 +306,6 @@ function useForOCR(){
   if(!state.rectifiedUrl)return;
   window.dispatchEvent(new CustomEvent('cardcenter:useocr',{detail:{url:state.rectifiedUrl,sourceUrl:state.sourceUrl,game:state.game}}));
   close();
-  if(typeof window.apriRiconoscimento==='function')setTimeout(()=>window.apriRiconoscimento(state.rectifiedUrl),0);
 }
 function close(){
   const p=state.prevView||'fine';el('cent').classList.add('hide');const x=el(p);if(x)x.classList.remove('hide');
