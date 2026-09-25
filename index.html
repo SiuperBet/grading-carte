@@ -90,7 +90,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
     <span class="prog">solo fronte/retro</span>
   </div>
   <div class="box"><video id="v" playsinline muted autoplay></video><div class="guida"></div><canvas id="autoOverlay"></canvas></div>
-  <div id="autoGuideStatus" class="autoStatus">Avvia la fotocamera: cercherò automaticamente i 4 bordi.</div>
+  <div id="autoGuideStatus" class="autoStatus">Inquadra tutta la carta. La foto verrà salvata completa: allineamento e centratura avvengono nel passaggio successivo.</div>
   <div class="chips" id="chips"></div>
   <div class="msg hide" id="msg"></div>
   <button id="btnShot">Scatta</button>
@@ -146,7 +146,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
   <div id="rstatus" class="msg hide"></div>
   <div id="rphotoActions" class="photoActions hide">
     <button id="rRecognizeBtn" type="button" onclick="riconosciFotoImportata()" style="flex-basis:100%">✨ Riconosci e valuta</button>
-    <button class="sec" type="button" onclick="usaFotoImportataPerCentratura()">⌗ Apri centratura</button>
+    <button class="sec" type="button" onclick="usaFotoImportataPerCentratura()">⌗ Allinea e centra</button>
     <button class="sec" type="button" onclick="usaFotoImportataComeFronte()">✓ Usa come fronte</button>
   </div>
   <div id="rresults"></div>
@@ -282,14 +282,12 @@ async function scatta(){
   const btn=$('btnShot');if(btn.disabled)return;
   const v=$('v'),s=STEPS[i],a=analizza(v,v.videoWidth,v.videoHeight),p=verifica(a,s);
   if(p.length){const m=$('msg');m.innerHTML='<b>Rifai la foto.</b><br>'+p.join('<br>');m.classList.remove('hide');return}
-  btn.disabled=true;const old=btn.textContent;btn.textContent=i<=1?'Allineo e ritaglio…':'Salvo…';
+  btn.disabled=true;const old=btn.textContent;btn.textContent='Salvo la foto completa…';
   try{
-    const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
-    let url=c.toDataURL('image/jpeg',.92);
-    if(i<=1&&window.AutoCardVision){
-      const out=await AutoCardVision.cropCanvas(c,$('gioco').value);
-      if(out&&out.url)url=out.url;
-    }
+    const cc=document.createElement('canvas');cc.width=v.videoWidth;cc.height=v.videoHeight;cc.getContext('2d').drawImage(v,0,0);
+    // V2: non ritagliare né raddrizzare durante l'acquisizione.
+    // La foto completa viene conservata e l'allineamento avviene dopo, con 4 angoli verificabili.
+    const url=cc.toDataURL('image/jpeg',.92);
     salva(url);
   }finally{btn.disabled=false;btn.textContent=old}
 }
@@ -880,11 +878,11 @@ $('file').onchange=e=>{
   const f=e.target.files[0];if(!f)return;const im=new Image();
   im.onload=async()=>{const a=analizza(im,im.width,im.height),p=verifica(a,STEPS[i]);
     if(p.length){alert('Rifai la foto:\n'+p.join('\n'));return}
-    let url=im.src;
-    if(i<=1&&window.AutoCardVision){
-      const cc=document.createElement('canvas');cc.width=im.naturalWidth;cc.height=im.naturalHeight;cc.getContext('2d').drawImage(im,0,0);
-      const out=await AutoCardVision.cropCanvas(cc,$('gioco').value);if(out&&out.url)url=out.url;
-    }
+    const cc=document.createElement('canvas'),mx=1800,s=Math.min(1,mx/Math.max(im.naturalWidth,im.naturalHeight));
+    cc.width=Math.max(1,Math.round(im.naturalWidth*s));cc.height=Math.max(1,Math.round(im.naturalHeight*s));
+    cc.getContext('2d').drawImage(im,0,0,cc.width,cc.height);
+    const url=cc.toDataURL('image/jpeg',.92);
+    try{URL.revokeObjectURL(im.src)}catch(_){}
     $('start').classList.add('hide');salva(url);if(i<STEPS.length){$('cap').classList.remove('hide')}};
   im.src=URL.createObjectURL(f);e.target.value='';
 };
