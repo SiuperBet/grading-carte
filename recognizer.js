@@ -434,9 +434,15 @@ async function recognize(src){
   if(recBusy)return;
   recBusy=true;recResults=[];rq('rresults').innerHTML='';rq('rocr').value='';
   try{
-    recUrl=src;rq('rpreview').src=src;rq('rpreview').style.display='';
+    // src è la sorgente OCR. NON deve sostituire recUrl, che resta sempre la foto completa importata.
+    var ocrSource=src||recUrl;
+    if(!ocrSource)throw new Error('Foto non disponibile');
+    if(!recUrl)recUrl=ocrSource;
+    if(rq('rpreviewWrap').style.display==='none'||!rq('rpreview').src){
+      rq('rpreview').src=recUrl;rq('rpreviewWrap').style.display='';
+    }
     setStatus('Preparo nome, attacchi e numero della carta…');
-    var im=await loadImage(src),game=rq('rgame').value;
+    var im=await loadImage(ocrSource),game=rq('rgame').value;
 
     var topA=cropBoxForOCR(im,.015,.01,.985,.18,'normal');
     var middle=cropBoxForOCR(im,.02,.48,.98,.84,'normal');
@@ -1003,30 +1009,26 @@ async function prepareImportedPhoto(file,source){
     await new Promise(function(resolve){rq('rpreview').onload=function(){resolve()};if(rq('rpreview').complete)resolve()});
     await yieldPaint();
 
-    setStatus('Cerco i quattro bordi della carta con due controlli indipendenti…');
+    setStatus('Cerco rapidamente i quattro bordi senza bloccare la pagina…');
     await yieldPaint();
     var game=rq('rgame').value==='ygo'?'ygo':'poke';
     var customDet=quickCardDetect(recOriginalCanvas,game);
-    if(customDet&&customDet.found&&(customDet.confidence||0)<.52)customDet=null;
-
-    setStatus('Verifico il perimetro con un secondo motore…');
-    var cvDet=await secondVisionCheck(recOriginalCanvas,game);
-    recDetection=chooseDetection(customDet,cvDet,recOriginalCanvas.width,recOriginalCanvas.height);
-    recCropFound=!!(recDetection&&recDetection.found);
-
-    if(recCropFound){
-      // L'OCR usa il ritaglio solo quando due motori concordano. In caso contrario usa la foto completa.
-      recOcrUrl=recDetection.outerVerified
-        ?detectedCropCanvas(recOriginalCanvas,recDetection,.055).toDataURL('image/jpeg',.9)
-        :recUrl;
+    if(customDet&&customDet.found&&(customDet.confidence||0)>=.52){
+      // Sul telefono questo è SOLO un suggerimento visivo.
+      // Non viene dichiarato verificato e non viene usato per ritagliare OCR/centratura.
+      recDetection={
+        found:true,points:customDet.points,width:recOriginalCanvas.width,height:recOriginalCanvas.height,
+        confidence:Math.min(.67,customDet.confidence||.52),outerVerified:false,consensus:false
+      };
+      recCropFound=true;
+      recOcrUrl=recUrl;
       drawRecognizerDetection();
       rq('rDetectLegend').classList.remove('hide');
-      var pct=Math.round((recDetection.confidence||0)*100);
-      setStatus((recDetection.outerVerified?'✓ Perimetro confermato da due rilevatori':'⚠ Perimetro non confermato')+' ('+pct+'%). '+(recDetection.outerVerified?'Puoi usarlo come base per la centratura.':'Non lo userò automaticamente per ritagliare o centrare la carta.'));
+      setStatus('✓ Foto pronta. Il contorno mostrato è solo una proposta: riconoscimento e centratura useranno la foto completa finché il perimetro non viene confermato.');
     }else{
+      recDetection=null;recCropFound=false;recOcrUrl=recUrl;
       var ov=rq('rDetectOverlay');if(ov){var oc=ov.getContext('2d');oc.clearRect(0,0,ov.width,ov.height)}
-      recOcrUrl=recUrl;
-      setStatus('Foto completa caricata. Nessun perimetro abbastanza affidabile: il riconoscimento userà comunque tutta la foto.');
+      setStatus('✓ Foto pronta. Nessun bordo abbastanza sicuro: riconoscimento e centratura useranno la foto completa.');
     }
   }catch(e){
     setStatus('Non riesco a caricare questa foto: '+(e&&e.message?e.message:'errore sconosciuto'),true);
