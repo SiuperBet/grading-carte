@@ -280,61 +280,83 @@ function downscaleImage(im,maxDim){
 function quickCardCrop(source,game){
   var sw=source.width,sh=source.height;
   if(!sw||!sh)return {found:false,canvas:source,confidence:0};
-  var max=460,sc=Math.min(1,max/Math.max(sw,sh));
+
+  // Analisi molto piccola: evita blocchi su Samsung Internet.
+  var max=320,sc=Math.min(1,max/Math.max(sw,sh));
   var w=Math.max(80,Math.round(sw*sc)),h=Math.max(80,Math.round(sh*sc));
   var c=document.createElement('canvas');c.width=w;c.height=h;
   var ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,w,h);
   var d=ctx.getImageData(0,0,w,h).data,g=new Float32Array(w*h);
-  for(var y=0;y<h;y++)for(var x=0;x<w;x++){
-    var p=(y*w+x)*4;g[y*w+x]=.299*d[p]+.587*d[p+1]+.114*d[p+2];
+  for(var i=0,p=0;i<g.length;i++,p+=4)g[i]=.299*d[p]+.587*d[p+1]+.114*d[p+2];
+
+  var vx=new Float32Array(w),hy=new Float32Array(h);
+  var y0=Math.round(h*.04),y1=Math.round(h*.96),x0=Math.round(w*.04),x1=Math.round(w*.96);
+  for(var y=y0;y<y1;y+=2){
+    var row=y*w;
+    for(var x=2;x<w-2;x++)vx[x]+=Math.abs(g[row+x+1]-g[row+x-1]);
   }
-  var ve=new Float32Array(w*h),he=new Float32Array(w*h);
-  for(var yy=1;yy<h-1;yy++)for(var xx=1;xx<w-1;xx++){
-    var i=yy*w+xx;
-    ve[i]=Math.abs(g[i+1]-g[i-1]);
-    he[i]=Math.abs(g[i+w]-g[i-w]);
+  for(var y2=2;y2<h-2;y2++){
+    var row2=y2*w;
+    for(var x2=x0;x2<x1;x2+=2)hy[y2]+=Math.abs(g[row2+x2+w]-g[row2+x2-w]);
   }
-  var vpre=Array.from({length:w},function(){return new Float32Array(h+1)});
-  var hpre=Array.from({length:h},function(){return new Float32Array(w+1)});
-  for(var x2=0;x2<w;x2++){var s=0;for(var y2=0;y2<h;y2++){s+=ve[y2*w+x2];vpre[x2][y2+1]=s}}
-  for(var y3=0;y3<h;y3++){var s2=0;for(var x3=0;x3<w;x3++){s2+=he[y3*w+x3];hpre[y3][x3+1]=s2}}
-  function vline(x,y0,y1){x=Math.max(0,Math.min(w-1,x|0));y0=Math.max(0,y0|0);y1=Math.min(h,y1|0);return (vpre[x][y1]-vpre[x][y0])/Math.max(1,y1-y0)}
-  function hline(y,x0,x1){y=Math.max(0,Math.min(h-1,y|0));x0=Math.max(0,x0|0);x1=Math.min(w,x1|0);return (hpre[y][x1]-hpre[y][x0])/Math.max(1,x1-x0)}
-  var ratio=game==='ygo'?59/86:63/88,best=null,avgEdge=0,count=0;
-  for(var q=0;q<ve.length;q+=7){avgEdge+=ve[q]+he[q];count++}
-  avgEdge/=Math.max(1,count);
-  var minH=Math.round(h*.18),maxH=Math.round(h*.72);
-  for(var rh=minH;rh<=maxH;rh+=Math.max(6,Math.round(h*.035))){
-    var rw=Math.round(rh*ratio);if(rw<45||rw>=w*.94)continue;
-    var step=Math.max(5,Math.round(Math.min(w,h)*.025));
-    for(var ry=Math.round(h*.04);ry+rh<h*.96;ry+=step){
-      for(var rx=Math.round(w*.04);rx+rw<w*.96;rx+=step){
-        var inset=Math.max(1,Math.round(Math.min(rw,rh)*.012));
-        var left=vline(rx+inset,ry,ry+rh),right=vline(rx+rw-inset,ry,ry+rh);
-        var top=hline(ry+inset,rx,rx+rw),bottom=hline(ry+rh-inset,rx,rx+rw);
-        var edge=(left+right+top+bottom)/4;
-        var cx=rx+rw/2,cy=ry+rh/2;
-        var center=Math.hypot((cx-w/2)/w,(cy-h/2)/h);
-        var area=(rw*rh)/(w*h);
-        var score=edge*(1-Math.min(.45,center*.55))*(.75+Math.min(.4,area));
-        if(!best||score>best.score)best={x:rx,y:ry,w:rw,h:rh,score:score,edge:edge};
-      }
+  function smooth(a){
+    var b=new Float32Array(a.length);
+    for(var i=2;i<a.length-2;i++)b[i]=(a[i-2]+2*a[i-1]+3*a[i]+2*a[i+1]+a[i+2])/9;
+    return b;
+  }
+  vx=smooth(vx);hy=smooth(hy);
+
+  function topPeaks(a,margin,count){
+    var arr=[];
+    for(var i=margin;i<a.length-margin;i++)arr.push({p:i,s:a[i]});
+    arr.sort(function(a,b){return b.s-a.s});
+    var out=[],gap=Math.max(4,Math.round(a.length*.025));
+    for(var k=0;k<arr.length&&out.length<count;k++){
+      var z=arr[k];
+      if(out.every(function(o){return Math.abs(o.p-z.p)>=gap}))out.push(z);
+    }
+    return out;
+  }
+  var xp=topPeaks(vx,Math.max(3,Math.round(w*.03)),22);
+  var yp=topPeaks(hy,Math.max(3,Math.round(h*.03)),22);
+  var ratio=game==='ygo'?59/86:63/88,best=null;
+
+  for(var a=0;a<xp.length;a++)for(var b=a+1;b<xp.length;b++){
+    var lx=Math.min(xp[a].p,xp[b].p),rx=Math.max(xp[a].p,xp[b].p),rw=rx-lx;
+    if(rw<w*.12||rw>w*.72)continue;
+    for(var u=0;u<yp.length;u++)for(var v=u+1;v<yp.length;v++){
+      var ty=Math.min(yp[u].p,yp[v].p),by=Math.max(yp[u].p,yp[v].p),rh=by-ty;
+      if(rh<h*.15||rh>h*.82)continue;
+      var rr=rw/rh,ratioErr=Math.abs(rr-ratio)/ratio;
+      if(ratioErr>.23)continue;
+      var area=(rw*rh)/(w*h);
+      if(area<.025||area>.55)continue;
+      var cx=(lx+rx)/2,cy=(ty+by)/2;
+      var centerErr=Math.hypot((cx-w/2)/w,(cy-h/2)/h);
+      var edge=xp[a].s+xp[b].s+yp[u].s+yp[v].s;
+      var score=edge*(1-ratioErr*.85)*(1-Math.min(.42,centerErr*.65))*(.82+Math.min(.25,area));
+      if(!best||score>best.score)best={x:lx,y:ty,w:rw,h:rh,score:score,edge:edge,ratioErr:ratioErr,area:area};
     }
   }
-  if(!best||best.edge<Math.max(5,avgEdge*.72))return {found:false,canvas:source,confidence:0};
-  var pad=.025,bx=Math.max(0,best.x-best.w*pad),by=Math.max(0,best.y-best.h*pad);
+
+  if(!best)return {found:false,canvas:source,confidence:0};
+  var pad=.018,bx=Math.max(0,best.x-best.w*pad),by=Math.max(0,best.y-best.h*pad);
   var bw=Math.min(w-bx,best.w*(1+2*pad)),bh=Math.min(h-by,best.h*(1+2*pad));
   var ox=bx/sc,oy=by/sc,ow=bw/sc,oh=bh/sc;
-  var outH=Math.min(1500,Math.round(oh)),outW=Math.max(1,Math.round(outH*(ow/oh)));
+
+  var outH=Math.min(1100,Math.max(500,Math.round(oh)));
+  var outW=Math.max(1,Math.round(outH*(ow/oh)));
   var out=document.createElement('canvas');out.width=outW;out.height=outH;
   out.getContext('2d').drawImage(source,ox,oy,ow,oh,0,0,outW,outH);
-  var conf=Math.max(0,Math.min(1,(best.edge-Math.max(5,avgEdge*.65))/18));
+
+  var conf=Math.max(0,Math.min(1,(1-best.ratioErr)*(.35+Math.min(.65,best.area*3))));
   return {found:true,canvas:out,confidence:conf,bbox:{x:ox,y:oy,w:ow,h:oh}};
 }
 
+var recCropFound=false;
 async function prepareImportedPhoto(file,source){
   if(!file)return;
-  setStatus(source==='gallery'?'Carico la foto dalla galleria...':'Carico la foto scattata...');
+  setStatus(source==='gallery'?'Carico la foto dalla galleria…':'Carico la foto scattata…');
   rq('rresults').innerHTML='';
   rq('rocr').value='';
   rq('rphotoActions').classList.remove('hide');
@@ -346,36 +368,25 @@ async function prepareImportedPhoto(file,source){
     await yieldPaint();
 
     var im=await loadImage(blobUrl);
-    setStatus('Preparo una copia leggera della foto...');
-    await yieldPaint();
-    var work=downscaleImage(im,1600);
+    var work=downscaleImage(im,1200);
     try{URL.revokeObjectURL(blobUrl)}catch(e){}
 
-    setStatus('Cerco automaticamente la carta nell’immagine...');
+    setStatus('Cerco la carta nell’immagine…');
     await yieldPaint();
     var game=rq('rgame').value==='ygo'?'ygo':'poke';
     var crop=quickCardCrop(work,game);
-    var finalCanvas=crop&&crop.found?crop.canvas:work;
-    var finalUrl=finalCanvas.toDataURL('image/jpeg',.9);
+    recCropFound=!!(crop&&crop.found);
+    var finalCanvas=recCropFound?crop.canvas:work;
+    var finalUrl=finalCanvas.toDataURL('image/jpeg',.86);
     recUrl=finalUrl;
     rq('rpreview').src=finalUrl;
     await yieldPaint();
 
-    if(crop&&crop.found){
-      setStatus('✓ Carta individuata e ritagliata. Avvio il riconoscimento...');
+    if(recCropFound){
+      setStatus('✓ Carta individuata. Ora scegli cosa fare: riconoscila, apri la centratura oppure salvala come fronte.');
     }else{
-      setStatus('Foto caricata. Non sono abbastanza sicuro del ritaglio: continuo con l’immagine ridotta.');
+      setStatus('Foto caricata. Non ho isolato la carta con sufficiente sicurezza: puoi comunque riconoscerla oppure aprire la centratura manuale.');
     }
-
-    try{
-      if(typeof foto!=='undefined'){
-        foto[0]=finalUrl;
-        if(window.GradingPersist)GradingPersist.savePhoto(0,finalUrl);
-      }
-    }catch(e){}
-
-    await yieldPaint();
-    await recognize(finalUrl);
   }catch(e){
     setStatus('Non riesco a caricare questa foto: '+(e&&e.message?e.message:'errore sconosciuto'),true);
   }
@@ -386,9 +397,25 @@ window.handleRecognizerInput=function(input,source){
   // ritarda il reset per compatibilità con Samsung Internet
   setTimeout(function(){try{input.value=''}catch(e){}},250);
 }
+window.riconosciFotoImportata=async function(){
+  if(!recUrl){setStatus('Prima scegli una foto.',true);return}
+  var b=rq('rRecognizeBtn');if(b&&b.disabled)return;
+  if(b){b.disabled=true;b.textContent='Riconosco…'}
+  try{
+    await yieldPaint();
+    await recognize(recUrl);
+  }finally{
+    if(b){b.disabled=false;b.textContent='✨ Riconosci e valuta'}
+  }
+}
 window.usaFotoImportataPerCentratura=function(){
   if(!recUrl){setStatus('Prima scegli una foto.',true);return}
   try{
+    // La foto importata non deve avviare OpenCV automaticamente.
+    window.__galleryCenterOnce=true;
+    window.__galleryCropFound=recCropFound;
+    var g=document.getElementById('gioco');
+    if(g)g.value=rq('rgame').value==='ygo'?'59,86':'63,88';
     rq('riconosci').classList.add('hide');
     if(typeof apriCent==='function')apriCent(recUrl);
   }catch(e){setStatus('Non riesco ad aprire la centratura: '+e.message,true)}
@@ -398,13 +425,18 @@ window.usaFotoImportataComeFronte=function(){
   try{
     if(typeof foto!=='undefined'){
       foto[0]=recUrl;
-      if(window.GradingPersist)GradingPersist.savePhoto(0,recUrl);
-      setStatus('✓ Foto salvata come fronte della carta.');
+      setStatus('✓ Foto impostata come fronte. Il salvataggio locale avviene senza bloccare la pagina.');
       rq('rfront').style.display='';
+      setTimeout(function(){
+        try{if(window.GradingPersist)GradingPersist.savePhoto(0,recUrl)}catch(e){}
+      },300);
     }
   }catch(e){setStatus('Salvataggio fronte non riuscito: '+e.message,true)}
 }
-rq('rgame').addEventListener('change',function(){if(recUrl)recognize(recUrl)});
+rq('rgame').addEventListener('change',function(){
+  rq('rresults').innerHTML='';
+  if(recUrl)setStatus('Gioco cambiato. Premi “Riconosci e valuta” per analizzare di nuovo la foto.');
+});
 rq('rresults').addEventListener('click',function(ev){
   var b=ev.target.closest('[data-rec]');if(!b)return;
   var c=recResults[Number(b.dataset.rec)];if(!c)return;
