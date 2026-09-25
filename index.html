@@ -50,6 +50,7 @@ video{width:100%;height:100%;object-fit:cover}
   <input id="file" type="file" accept="image/*" capture="environment" class="hide">
   <button class="sec" type="button" onclick="document.getElementById('fileC').click()">Solo centratura: scegli una foto dalla galleria</button>
   <input id="fileC" type="file" accept="image/*" class="hide">
+  <button class="sec" onclick="mostraFine()">Vai a centratura/prezzi (senza scattare foto ora)</button>
 </div>
 
 <div id="cap" class="hide">
@@ -211,7 +212,11 @@ function scatta(){
 }
 function fine(){
   clearInterval(timer);if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
-  $('start').classList.add('hide');$('cap').classList.add('hide');$('fine').classList.remove('hide');
+  $('start').classList.add('hide');$('cap').classList.add('hide');mostraFine();
+}
+function mostraFine(){
+  ['start','cap','cent','prezzo'].forEach(x=>$(x).classList.add('hide'));
+  $('fine').classList.remove('hide');
   $('grid').innerHTML=STEPS.map((s,k)=>foto[k]?`<div><img src="${foto[k]}"><b>${s.t}</b><br><a href="#" onclick="rifai(${k});return false">Rifai</a></div>`:`<div><b>${s.t}</b><br>non scattata</div>`).join('');
 }
 async function rifai(k){
@@ -316,10 +321,7 @@ function apriCent(url){
   };
   im.src=url;
 }
-function esciCent(){
-  $('cent').classList.add('hide');
-  if(foto.length)$('fine').classList.remove('hide');else $('start').classList.remove('hide');
-}
+function esciCent(){mostraFine()}
 
 // ---------- Passo 1: angoli ----------
 VA.over=(c,u)=>{
@@ -461,7 +463,7 @@ function apriPrezzo(){
   ['start','fine','cap','cent'].forEach(x=>$(x).classList.add('hide'));
   $('prezzo').classList.remove('hide');$('pcarta').classList.add('hide');$('prisultati').innerHTML='';
 }
-function esciPrezzo(){$('prezzo').classList.add('hide');$('fine').classList.remove('hide')}
+function esciPrezzo(){mostraFine()}
 async function cercaPrezzo(){
   const q=$('pq').value.trim();if(!q){return}
   const st=$('pstato');st.classList.remove('hide');st.textContent='Cerco...';
