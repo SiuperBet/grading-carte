@@ -233,6 +233,7 @@ window.apriRiconoscimento=function(src){
   ['start','fine','cap','cent','prezzo'].forEach(function(id){var x=rq(id);if(x)x.classList.add('hide')});
   rq('riconosci').classList.remove('hide');rq('rresults').innerHTML='';rq('rstatus').classList.add('hide');
   rq('rfront').style.display=(typeof foto!=='undefined'&&foto[0])?'':'none';
+  if(recUrl){rq('rpreview').src=recUrl;rq('rpreview').style.display='';rq('rphotoActions').classList.remove('hide')}
   if(src)recognize(src);
 }
 window.esciRiconoscimento=function(){
@@ -242,16 +243,87 @@ window.esciRiconoscimento=function(){
 window.usaFronteOCR=function(){
   if(typeof foto!=='undefined'&&foto[0])recognize(foto[0]);
 }
-function handleRecognizerFile(){
-  if(this.files&&this.files[0]){
-    if(recUrl&&recUrl.indexOf('blob:')===0)URL.revokeObjectURL(recUrl);
-    recognize(URL.createObjectURL(this.files[0]));
-  }
-  this.value='';
+function fileToDataURL(file){
+  return new Promise(function(resolve,reject){
+    var r=new FileReader();
+    r.onload=function(){resolve(String(r.result||''))};
+    r.onerror=function(){reject(r.error||new Error('Impossibile leggere la foto'))};
+    r.readAsDataURL(file);
+  });
 }
-['rfileCamera','rfileGallery'].forEach(function(id){
-  var e=rq(id);if(e)e.addEventListener('change',handleRecognizerFile);
-});
+async function prepareImportedPhoto(file,source){
+  if(!file)return;
+  setStatus(source==='gallery'?'Carico la foto dalla galleria...':'Carico la foto scattata...');
+  rq('rresults').innerHTML='';
+  rq('rocr').value='';
+  try{
+    var raw=await fileToDataURL(file);
+    recUrl=raw;
+    rq('rpreview').src=raw;
+    rq('rpreview').style.display='';
+    rq('rphotoActions').classList.remove('hide');
+
+    var finalUrl=raw;
+    try{
+      var im=await loadImage(raw);
+      var canvas=document.createElement('canvas');
+      canvas.width=im.naturalWidth||im.width;
+      canvas.height=im.naturalHeight||im.height;
+      canvas.getContext('2d').drawImage(im,0,0);
+      if(window.AutoCardVision){
+        setStatus('Rilevo bordi e allineamento della carta...');
+        var game=rq('rgame').value==='ygo'?'59,86':'63,88';
+        var aligned=await AutoCardVision.cropCanvas(canvas,game);
+        if(aligned&&aligned.found&&aligned.url){
+          finalUrl=aligned.url;
+          recUrl=finalUrl;
+          rq('rpreview').src=finalUrl;
+          setStatus('✓ Carta rilevata e raddrizzata automaticamente. Avvio il riconoscimento...');
+        }else{
+          setStatus('Carta caricata. Non sono abbastanza sicuro del ritaglio automatico: continuo con la foto originale.');
+        }
+      }
+    }catch(e){
+      setStatus('Foto caricata. Continuo senza ritaglio automatico.');
+    }
+
+    // Salva subito la foto come fronte della sessione, senza avanzare le 11 foto.
+    try{
+      if(typeof foto!=='undefined'){
+        foto[0]=finalUrl;
+        if(window.GradingPersist)GradingPersist.savePhoto(0,finalUrl);
+      }
+    }catch(e){}
+
+    await recognize(finalUrl);
+  }catch(e){
+    setStatus('Non riesco a caricare questa foto: '+(e&&e.message?e.message:'errore sconosciuto'),true);
+  }
+}
+window.handleRecognizerInput=function(input,source){
+  var file=input&&input.files&&input.files[0];
+  if(file)prepareImportedPhoto(file,source||'gallery');
+  // ritarda il reset per compatibilità con Samsung Internet
+  setTimeout(function(){try{input.value=''}catch(e){}},250);
+}
+window.usaFotoImportataPerCentratura=function(){
+  if(!recUrl){setStatus('Prima scegli una foto.',true);return}
+  try{
+    rq('riconosci').classList.add('hide');
+    if(typeof apriCent==='function')apriCent(recUrl);
+  }catch(e){setStatus('Non riesco ad aprire la centratura: '+e.message,true)}
+}
+window.usaFotoImportataComeFronte=function(){
+  if(!recUrl){setStatus('Prima scegli una foto.',true);return}
+  try{
+    if(typeof foto!=='undefined'){
+      foto[0]=recUrl;
+      if(window.GradingPersist)GradingPersist.savePhoto(0,recUrl);
+      setStatus('✓ Foto salvata come fronte della carta.');
+      rq('rfront').style.display='';
+    }
+  }catch(e){setStatus('Salvataggio fronte non riuscito: '+e.message,true)}
+}
 rq('rgame').addEventListener('change',function(){if(recUrl)recognize(recUrl)});
 rq('rresults').addEventListener('click',function(ev){
   var b=ev.target.closest('[data-rec]');if(!b)return;
