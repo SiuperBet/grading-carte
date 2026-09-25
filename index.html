@@ -485,8 +485,8 @@ async function cercaPrezzo(pagina){
       const righe=(j.data||[]).map(c=>`<button class="sec chb pr" onclick='mostraPoke(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
         <img src="${c.images.small}" loading="lazy"><span>${c.name} — ${c.set.name} (${c.number})</span></button>`).join('');
       if(pagina===1)$('prisultati').innerHTML=righe;else $('prisultati').insertAdjacentHTML('beforeend',righe);
+      const vecchio=document.getElementById('pmore');if(vecchio)vecchio.remove();
       const tot=j.totalCount||0,visti=pagina*20;
-      $('pmore').remove?.();
       if(visti<tot){$('prisultati').insertAdjacentHTML('beforeend',`<button class="sec" id="pmore" onclick="cercaPrezzo(${pagina+1})">Carica altri (${visti} di ${tot})</button>`)}
     }else{
       const r=await fetch('https://db.ygoprodeck.com/api/v7/cardinfo.php?fname='+encodeURIComponent(q));
