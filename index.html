@@ -111,7 +111,7 @@ video{width:100%;height:100%;object-fit:contain;display:block}
 
 <div id="prezzo" class="hide">
   <h2 style="margin:4px 0">Prezzi e confronti di mercato</h2>
-  <div class="msg">La pagina mostra <b>separatamente</b> i dati restituiti dalle fonti: TCGplayer (USD), Cardmarket (EUR) e, per Yu-Gi-Oh!, i prezzi YGOPRODeck per singola stampa/set e i prezzi-venditore disponibili.<br><br>
+  <div class="msg">La pagina mostra <b>separatamente</b> i dati restituiti dalle fonti: per Pokémon la ricerca usa TCGdex con prezzi Cardmarket (EUR) e TCGplayer (USD); per Yu-Gi-Oh! usa YGOPRODeck per singola stampa/set e prezzi-venditore disponibili.<br><br>
   <b>Nessun prezzo viene inventato o convertito tra valute.</b> Le eventuali fasce NM/LP/MP/HP/Damaged restano calcoli indicativi e sono sempre etichettate come stime. Per un controllo ulteriore trovi anche il collegamento alle vendite concluse eBay.</div>
   <div style="display:flex;gap:6px">
     <input id="pq" placeholder="es. Charizard, oppure 6/102" style="flex:1;font:inherit;padding:10px;border-radius:8px;border:1px solid #8884">
@@ -565,29 +565,116 @@ function apriPrezzo(){
 }
 function esciPrezzo(){mostraFine()}
 let PSTATE=null,RISPOKE=[],RISYGO=[]; // ultima ricerca, per "carica altri" e per il click sui risultati
+const TCGDEX_SEARCH_BASE='https://api.tcgdex.net/v2/en';
+
+function tcgdexImg(base,quality){
+  return base?base+'/'+(quality||'low')+'.webp':'';
+}
+function tcgdexLegacyCard(d){
+  const cm=d&&d.pricing&&d.pricing.cardmarket;
+  const tp=d&&d.pricing&&d.pricing.tcgplayer;
+  const tpPrices={};
+  if(tp){
+    Object.keys(tp).forEach(k=>{
+      if(k==='updated'||k==='unit')return;
+      const p=tp[k];if(!p||typeof p!=='object')return;
+      let nk=k;
+      if(k==='reverse-holofoil'||k==='reverse')nk='reverseHolofoil';
+      else if(k==='1st-edition')nk='firstEditionNormal';
+      else if(k==='1st-edition-holofoil')nk='firstEditionHolofoil';
+      tpPrices[nk]={low:p.lowPrice,mid:p.midPrice,high:p.highPrice,market:p.marketPrice,directLow:p.directLowPrice};
+    });
+  }
+  return {
+    id:d.id,
+    name:d.name||'',
+    number:String(d.localId==null?'':d.localId),
+    rarity:d.rarity||'',
+    set:{
+      id:d.set&&d.set.id||'',
+      name:d.set&&d.set.name||'',
+      total:d.set&&d.set.cardCount&&d.set.cardCount.total||0,
+      printedTotal:d.set&&d.set.cardCount&&d.set.cardCount.official||0
+    },
+    images:{small:tcgdexImg(d.image,'low'),large:tcgdexImg(d.image,'high')},
+    cardmarket:cm?{
+      updatedAt:cm.updated||'',url:'',
+      prices:{
+        lowPrice:cm.low,averageSellPrice:cm.avg,trendPrice:cm.trend,
+        avg1:cm.avg1,avg7:cm.avg7,avg30:cm.avg30,
+        reverseHoloLow:cm['low-holo'],reverseHoloSell:cm['avg-holo'],reverseHoloTrend:cm['trend-holo'],
+        reverseHoloAvg1:cm['avg1-holo'],reverseHoloAvg7:cm['avg7-holo'],reverseHoloAvg30:cm['avg30-holo']
+      }
+    }:null,
+    tcgplayer:tp?{updatedAt:tp.updated||'',url:'',prices:tpPrices}:null,
+    tcgdex:true
+  };
+}
+async function tcgdexFetchJson(url,timeout){
+  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),timeout||16000);
+  try{
+    const r=await fetch(url,{signal:ctl.signal});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    return await r.json();
+  }finally{clearTimeout(tm)}
+}
+window.tcgDexSearchPokemonBriefs=async function(q,opt){
+  opt=opt||{};
+  const p=new URLSearchParams();
+  if(opt.number)p.set('localId','eq:'+String(opt.number));
+  else p.set('name',String(q||'').trim());
+  p.set('pagination:page',String(opt.page||1));
+  p.set('pagination:itemsPerPage',String(opt.pageSize||20));
+  return await tcgdexFetchJson(TCGDEX_SEARCH_BASE+'/cards?'+p.toString(),16000);
+};
+window.tcgDexFetchLegacyCard=async function(id){
+  const d=await tcgdexFetchJson(TCGDEX_SEARCH_BASE+'/cards/'+encodeURIComponent(id),16000);
+  return tcgdexLegacyCard(d);
+};
+async function tcgdexLoadFull(briefs,limit){
+  const list=(briefs||[]).slice(0,limit||20),out=new Array(list.length),queue=list.map((b,i)=>({b,i}));
+  async function worker(){
+    while(queue.length){
+      const x=queue.shift();
+      try{out[x.i]=await window.tcgDexFetchLegacyCard(x.b.id)}catch(e){out[x.i]=null}
+    }
+  }
+  await Promise.all([worker(),worker(),worker(),worker(),worker(),worker()]);
+  return out.filter(Boolean);
+}
+
 async function cercaPrezzo(pagina){
-  const q=$('pq').value.trim();if(!q){return}
+  const q=$('pq').value.trim();if(!q)return;
   const st=$('pstato');
-  if(!pagina){pagina=1;PSTATE={q,gioco:$('pgioco').value};$('prisultati').innerHTML='';$('pcarta').classList.add('hide')}
+  if(!pagina){
+    pagina=1;
+    PSTATE={q,gioco:$('pgioco').value};
+    $('prisultati').innerHTML='';
+    $('pcarta').classList.add('hide');
+  }
   st.classList.remove('hide');st.textContent='Cerco...';
   try{
     if($('pgioco').value==='poke'){
       const soloNumero=/^[0-9]+(\/[0-9]+)?$/.test(q);
-      const query=soloNumero?'number:'+encodeURIComponent(q.split('/')[0]):'name:'+encodeURIComponent(q)+'*';
-      const r=await fetch('https://api.pokemontcg.io/v2/cards?q='+query+'&pageSize=20&page='+pagina);
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      const j=await r.json();
-      if(pagina===1&&(!j.data||!j.data.length)){st.textContent='Nessuna carta trovata con questo nome o numero.';return}
-      st.classList.add('hide');
+      const numero=soloNumero?q.split('/')[0]:null;
+      const briefs=await window.tcgDexSearchPokemonBriefs(q,{number:numero,page:pagina,pageSize:20});
+      if(pagina===1&&(!briefs||!briefs.length)){
+        st.textContent='Nessuna carta trovata con questo nome o numero.';
+        return;
+      }
+      st.textContent='Recupero dettagli e prezzi...';
+      const full=await tcgdexLoadFull(briefs,20);
       if(pagina===1)RISPOKE=[];
       const base=RISPOKE.length;
-      RISPOKE=RISPOKE.concat(j.data||[]);
-      const righe=(j.data||[]).map((c,i)=>`<button class="sec chb pr" onclick="mostraPoke(${base+i})">
-        <img src="${c.images.small}" loading="lazy"><span>${esc(c.name)} — ${esc(c.set.name)} (${esc(c.number)})</span></button>`).join('');
+      RISPOKE=RISPOKE.concat(full);
+      const righe=full.map((c,i)=>`<button class="sec chb pr" onclick="mostraPoke(${base+i})">
+        ${c.images.small?'<img src="'+esc(c.images.small)+'" loading="lazy">':''}<span>${esc(c.name)} — ${esc(c.set.name)} (${esc(c.number)})</span></button>`).join('');
       if(pagina===1)$('prisultati').innerHTML=righe;else $('prisultati').insertAdjacentHTML('beforeend',righe);
       const vecchio=document.getElementById('pmore');if(vecchio)vecchio.remove();
-      const tot=j.totalCount||0,visti=pagina*20;
-      if(visti<tot){$('prisultati').insertAdjacentHTML('beforeend',`<button class="sec" id="pmore" onclick="cercaPrezzo(${pagina+1})">Carica altri (${visti} di ${tot})</button>`)}
+      if((briefs||[]).length===20){
+        $('prisultati').insertAdjacentHTML('beforeend',`<button class="sec" id="pmore" onclick="cercaPrezzo(${pagina+1})">Carica altri risultati</button>`);
+      }
+      st.classList.add('hide');
     }else{
       const r=await fetch('https://db.ygoprodeck.com/api/v7/cardinfo.php?fname='+encodeURIComponent(q));
       if(!r.ok)throw new Error('HTTP '+r.status);
@@ -600,10 +687,10 @@ async function cercaPrezzo(pagina){
     }
   }catch(e){
     st.classList.remove('hide');
-    const reteGiu=e.message==='Failed to fetch'||e.name==='TypeError';
+    const reteGiu=e.message==='Failed to fetch'||e.name==='TypeError'||e.name==='AbortError';
     st.textContent=reteGiu
-      ? 'Non riesco a collegarmi a internet in questo momento. Controlla la connessione (Wi-Fi/dati) e tocca di nuovo "Cerca". Non è un errore dell\u2019app.'
-      : 'Il servizio prezzi ha risposto con un errore ('+e.message+'). Riprova tra poco: potrebbe essere un limite temporaneo dell\u2019API gratuita.';
+      ? 'Non riesco a collegarmi alla fonte dati in questo momento. Riprova tra poco.'
+      : 'Ricerca non riuscita ('+e.message+'). Riprova tra poco.';
   }
 }
 function num(v){const n=Number(v);return Number.isFinite(n)&&n>0?n:null}
@@ -728,7 +815,7 @@ $('file').onchange=e=>{
 };
 </script>
 <script src="auto-camera.js?v=20260925-3"></script>
-<script src="recognizer.js?v=20260925-5"></script>
+<script src="recognizer.js?v=20260925-6"></script>
 <script src="grading-state.js?v=20260925-3"></script>
 </body>
 </html>
