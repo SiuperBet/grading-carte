@@ -74,6 +74,18 @@ function cropBoxForOCR(im,x0,y0,x1,y1,mode){
 function cropForOCR(im,from,to){
   return cropBoxForOCR(im,0,from,1,to,'normal');
 }
+function wholeForOCR(im){
+  var sw=im.naturalWidth||im.width,sh=im.naturalHeight||im.height,scale=Math.min(1,900/Math.max(sw,sh));
+  var cv=document.createElement('canvas');cv.width=Math.max(320,Math.round(sw*scale));cv.height=Math.max(320,Math.round(sh*scale));
+  var ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(im,0,0,cv.width,cv.height);
+  var d=ctx.getImageData(0,0,cv.width,cv.height),p=d.data;
+  for(var i=0;i<p.length;i+=4){
+    var g=.299*p[i]+.587*p[i+1]+.114*p[i+2];
+    g=Math.max(0,Math.min(255,(g-128)*1.45+128));
+    p[i]=p[i+1]=p[i+2]=g;
+  }
+  ctx.putImageData(d,0,0);return cv;
+}
 function cleanOcrLine(s){
   return String(s||'').replace(/[|{}\[\]<>_=~]/g,' ')
     .replace(/\b(?:HP|PS|PV)\s*\d{1,4}\b/ig,' ')
@@ -486,11 +498,23 @@ async function recognize(src){
 
       renderResults(game,data,topText,[middleText,bottomText,footerText].join('\n'));
 
+      // Secondo tentativo Pokémon: se le zone mirate falliscono, leggi l'intera carta.
+      // È più lento, quindi parte solo sui fallimenti.
+      if(!recResults.length&&game==='poke'){
+        setStatus('Prima lettura insufficiente. Faccio un secondo controllo sull’intera carta…');
+        await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
+        var full=await worker.recognize(wholeForOCR(im));
+        var fullText=full&&full.data&&full.data.text||'';
+        var data2=await findPokemon(fullText,fullText,fullText,fullText);
+        renderResults(game,data2,fullText,fullText);
+        if(recResults.length)data=data2;
+      }
+
       if(recResults.length){
         var method=data.det&&data.det.method?' · metodo '+data.det.method:'';
         setStatus('Trovate '+recResults.length+' possibili corrispondenze'+method+'. Controlla immagine, espansione e numero.');
       }else{
-        setStatus('Non ho trovato una corrispondenza affidabile. Non seleziono automaticamente una carta sbagliata.',true);
+        setStatus('Non ho trovato una corrispondenza affidabile nemmeno con la seconda lettura completa. Non seleziono automaticamente una carta sbagliata.',true);
       }
     }finally{await worker.terminate()}
   }catch(e){
