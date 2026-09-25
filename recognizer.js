@@ -829,7 +829,8 @@ function drawRecognizerDetection(){
   var ctx=cv.getContext('2d');ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);ctx.clearRect(0,0,W,H);
   var nw=img.naturalWidth,nh=img.naturalHeight,scale=Math.min(W/nw,H/nh),dw=nw*scale,dh=nh*scale,ox=(W-dw)/2,oy=(H-dh)/2;
   var p=recDetection.points.map(function(q){return {x:ox+q.x*scale,y:oy+q.y*scale}});
-  ctx.lineWidth=3;ctx.strokeStyle='#39e477';ctx.fillStyle='#39e477';
+  var ok=!!recDetection.outerVerified;
+  ctx.lineWidth=3;ctx.strokeStyle=ok?'#39e477':'#ffb020';ctx.fillStyle=ok?'#39e477':'#ffb020';
   ctx.beginPath();p.forEach(function(q,i){if(i)ctx.lineTo(q.x,q.y);else ctx.moveTo(q.x,q.y)});ctx.closePath();ctx.stroke();
   p.forEach(function(q){ctx.beginPath();ctx.arc(q.x,q.y,5,0,Math.PI*2);ctx.fill()});
 }
@@ -917,7 +918,7 @@ window.usaFotoImportataPerCentratura=function(){
     // La foto importata non deve avviare OpenCV automaticamente.
     window.__galleryCenterOnce=true;
     window.__galleryCropFound=recCropFound;
-    window.__galleryDetectedCorners=recDetection&&recDetection.found
+    window.__galleryDetectedCorners=recDetection&&recDetection.found&&recDetection.outerVerified
       ?recDetection.points.map(function(p){return {x:p.x/recDetection.width,y:p.y/recDetection.height}})
       :null;
     var g=document.getElementById('gioco');
