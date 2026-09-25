@@ -75,7 +75,7 @@ function install(){
 #cent .cc2msg{background:#16181d;border:1px solid #3b3f48;border-radius:12px;padding:12px;margin:10px 0;line-height:1.35}
 #cent .cc2status{padding:9px 11px;border-radius:10px;background:#10141a;margin:8px 0;color:#cbd2dc}
 #cent .cc2status.ok{color:#bff5c9;border:1px solid #275b33}.cc2status.warn{color:#ffd79a;border:1px solid #72551e}
-#cent .cc2stage{display:none}.cc2stage.on{display:block}
+#cent .cc2stage{display:none}#cent .cc2stage.on{display:block}
 #cent .cc2canvas{display:block;width:100%;height:auto;max-height:62vh;object-fit:contain;background:#08090b;border-radius:12px;touch-action:none}
 #cent .cc2wrap{background:#08090b;border-radius:14px;padding:7px;margin-top:8px}
 #cent .cc2corners,#cent .cc2lines{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:9px 0}
