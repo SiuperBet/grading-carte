@@ -266,43 +266,107 @@ function fileToDataURL(file){
     r.readAsDataURL(file);
   });
 }
+function yieldPaint(){
+  return new Promise(function(resolve){requestAnimationFrame(function(){setTimeout(resolve,0)})});
+}
+function downscaleImage(im,maxDim){
+  var sw=im.naturalWidth||im.width,sh=im.naturalHeight||im.height;
+  var sc=Math.min(1,(maxDim||1600)/Math.max(sw,sh));
+  var c=document.createElement('canvas');
+  c.width=Math.max(1,Math.round(sw*sc));c.height=Math.max(1,Math.round(sh*sc));
+  c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+  return c;
+}
+function quickCardCrop(source,game){
+  var sw=source.width,sh=source.height;
+  if(!sw||!sh)return {found:false,canvas:source,confidence:0};
+  var max=460,sc=Math.min(1,max/Math.max(sw,sh));
+  var w=Math.max(80,Math.round(sw*sc)),h=Math.max(80,Math.round(sh*sc));
+  var c=document.createElement('canvas');c.width=w;c.height=h;
+  var ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,w,h);
+  var d=ctx.getImageData(0,0,w,h).data,g=new Float32Array(w*h);
+  for(var y=0;y<h;y++)for(var x=0;x<w;x++){
+    var p=(y*w+x)*4;g[y*w+x]=.299*d[p]+.587*d[p+1]+.114*d[p+2];
+  }
+  var ve=new Float32Array(w*h),he=new Float32Array(w*h);
+  for(var yy=1;yy<h-1;yy++)for(var xx=1;xx<w-1;xx++){
+    var i=yy*w+xx;
+    ve[i]=Math.abs(g[i+1]-g[i-1]);
+    he[i]=Math.abs(g[i+w]-g[i-w]);
+  }
+  var vpre=Array.from({length:w},function(){return new Float32Array(h+1)});
+  var hpre=Array.from({length:h},function(){return new Float32Array(w+1)});
+  for(var x2=0;x2<w;x2++){var s=0;for(var y2=0;y2<h;y2++){s+=ve[y2*w+x2];vpre[x2][y2+1]=s}}
+  for(var y3=0;y3<h;y3++){var s2=0;for(var x3=0;x3<w;x3++){s2+=he[y3*w+x3];hpre[y3][x3+1]=s2}}
+  function vline(x,y0,y1){x=Math.max(0,Math.min(w-1,x|0));y0=Math.max(0,y0|0);y1=Math.min(h,y1|0);return (vpre[x][y1]-vpre[x][y0])/Math.max(1,y1-y0)}
+  function hline(y,x0,x1){y=Math.max(0,Math.min(h-1,y|0));x0=Math.max(0,x0|0);x1=Math.min(w,x1|0);return (hpre[y][x1]-hpre[y][x0])/Math.max(1,x1-x0)}
+  var ratio=game==='ygo'?59/86:63/88,best=null,avgEdge=0,count=0;
+  for(var q=0;q<ve.length;q+=7){avgEdge+=ve[q]+he[q];count++}
+  avgEdge/=Math.max(1,count);
+  var minH=Math.round(h*.18),maxH=Math.round(h*.72);
+  for(var rh=minH;rh<=maxH;rh+=Math.max(6,Math.round(h*.035))){
+    var rw=Math.round(rh*ratio);if(rw<45||rw>=w*.94)continue;
+    var step=Math.max(5,Math.round(Math.min(w,h)*.025));
+    for(var ry=Math.round(h*.04);ry+rh<h*.96;ry+=step){
+      for(var rx=Math.round(w*.04);rx+rw<w*.96;rx+=step){
+        var inset=Math.max(1,Math.round(Math.min(rw,rh)*.012));
+        var left=vline(rx+inset,ry,ry+rh),right=vline(rx+rw-inset,ry,ry+rh);
+        var top=hline(ry+inset,rx,rx+rw),bottom=hline(ry+rh-inset,rx,rx+rw);
+        var edge=(left+right+top+bottom)/4;
+        var cx=rx+rw/2,cy=ry+rh/2;
+        var center=Math.hypot((cx-w/2)/w,(cy-h/2)/h);
+        var area=(rw*rh)/(w*h);
+        var score=edge*(1-Math.min(.45,center*.55))*(.75+Math.min(.4,area));
+        if(!best||score>best.score)best={x:rx,y:ry,w:rw,h:rh,score:score,edge:edge};
+      }
+    }
+  }
+  if(!best||best.edge<Math.max(5,avgEdge*.72))return {found:false,canvas:source,confidence:0};
+  var pad=.025,bx=Math.max(0,best.x-best.w*pad),by=Math.max(0,best.y-best.h*pad);
+  var bw=Math.min(w-bx,best.w*(1+2*pad)),bh=Math.min(h-by,best.h*(1+2*pad));
+  var ox=bx/sc,oy=by/sc,ow=bw/sc,oh=bh/sc;
+  var outH=Math.min(1500,Math.round(oh)),outW=Math.max(1,Math.round(outH*(ow/oh)));
+  var out=document.createElement('canvas');out.width=outW;out.height=outH;
+  out.getContext('2d').drawImage(source,ox,oy,ow,oh,0,0,outW,outH);
+  var conf=Math.max(0,Math.min(1,(best.edge-Math.max(5,avgEdge*.65))/18));
+  return {found:true,canvas:out,confidence:conf,bbox:{x:ox,y:oy,w:ow,h:oh}};
+}
+
 async function prepareImportedPhoto(file,source){
   if(!file)return;
   setStatus(source==='gallery'?'Carico la foto dalla galleria...':'Carico la foto scattata...');
   rq('rresults').innerHTML='';
   rq('rocr').value='';
+  rq('rphotoActions').classList.remove('hide');
   try{
-    var raw=await fileToDataURL(file);
-    recUrl=raw;
-    rq('rpreview').src=raw;
+    var blobUrl=URL.createObjectURL(file);
+    recUrl=blobUrl;
+    rq('rpreview').src=blobUrl;
     rq('rpreview').style.display='';
-    rq('rphotoActions').classList.remove('hide');
+    await yieldPaint();
 
-    var finalUrl=raw;
-    try{
-      var im=await loadImage(raw);
-      var canvas=document.createElement('canvas');
-      canvas.width=im.naturalWidth||im.width;
-      canvas.height=im.naturalHeight||im.height;
-      canvas.getContext('2d').drawImage(im,0,0);
-      if(window.AutoCardVision){
-        setStatus('Rilevo bordi e allineamento della carta...');
-        var game=rq('rgame').value==='ygo'?'59,86':'63,88';
-        var aligned=await AutoCardVision.cropCanvas(canvas,game);
-        if(aligned&&aligned.found&&aligned.url){
-          finalUrl=aligned.url;
-          recUrl=finalUrl;
-          rq('rpreview').src=finalUrl;
-          setStatus('✓ Carta rilevata e raddrizzata automaticamente. Avvio il riconoscimento...');
-        }else{
-          setStatus('Carta caricata. Non sono abbastanza sicuro del ritaglio automatico: continuo con la foto originale.');
-        }
-      }
-    }catch(e){
-      setStatus('Foto caricata. Continuo senza ritaglio automatico.');
+    var im=await loadImage(blobUrl);
+    setStatus('Preparo una copia leggera della foto...');
+    await yieldPaint();
+    var work=downscaleImage(im,1600);
+    try{URL.revokeObjectURL(blobUrl)}catch(e){}
+
+    setStatus('Cerco automaticamente la carta nell’immagine...');
+    await yieldPaint();
+    var game=rq('rgame').value==='ygo'?'ygo':'poke';
+    var crop=quickCardCrop(work,game);
+    var finalCanvas=crop&&crop.found?crop.canvas:work;
+    var finalUrl=finalCanvas.toDataURL('image/jpeg',.9);
+    recUrl=finalUrl;
+    rq('rpreview').src=finalUrl;
+    await yieldPaint();
+
+    if(crop&&crop.found){
+      setStatus('✓ Carta individuata e ritagliata. Avvio il riconoscimento...');
+    }else{
+      setStatus('Foto caricata. Non sono abbastanza sicuro del ritaglio: continuo con l’immagine ridotta.');
     }
 
-    // Salva subito la foto come fronte della sessione, senza avanzare le 11 foto.
     try{
       if(typeof foto!=='undefined'){
         foto[0]=finalUrl;
@@ -310,6 +374,7 @@ async function prepareImportedPhoto(file,source){
       }
     }catch(e){}
 
+    await yieldPaint();
     await recognize(finalUrl);
   }catch(e){
     setStatus('Non riesco a caricare questa foto: '+(e&&e.message?e.message:'errore sconosciuto'),true);
