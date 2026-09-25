@@ -4,7 +4,7 @@
 const state={
   source:null,sourceUrl:null,sourceKind:'front',game:'poke',points:[null,null,null,null],selected:0,
   rectified:null,rectifiedUrl:null,lines:{l:null,r:null,t:null,b:null},lineSel:'l',
-  prevView:null,editingVersion:0,fingerprint:null,autoBusy:false,lensMode:'context'
+  prevView:null,editingVersion:0,fingerprint:null,autoBusy:false,lensMode:'context',lensHideTimer:null,lastPointer:null
 };
 
 function el(id){return document.getElementById(id)}
@@ -81,7 +81,7 @@ function install(){
 #cent .cc2corners,#cent .cc2lines{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:9px 0}
 #cent .cc2corners button,#cent .cc2lines button{margin:0}
 #cent .cc2sel{outline:2px solid #2f65ff}
-#cent .cc2lens{display:none;width:min(92%,420px);height:auto;aspect-ratio:1/1;margin:10px auto 0;border:3px solid #36e16f;border-radius:16px;background:#000;box-shadow:0 6px 20px #0008}
+#cent .cc2lens{display:none;position:fixed;width:min(48vw,210px);height:auto;aspect-ratio:1/1;margin:0;border:3px solid #36e16f;border-radius:18px;background:#000;box-shadow:0 8px 28px #000b;z-index:99999;pointer-events:none;touch-action:none}
 #cent .cc2row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}#cent .cc2row button{flex:1;min-width:42%}
 #cent .cc2result{font-size:1.12rem;font-weight:800;line-height:1.5;padding:12px;border-radius:12px;background:#111820;margin:10px 0}
 #cent .cc2help{font-size:.9rem;opacity:.82}#cent .cc2lensModes{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:8px 0}#cent .cc2lensModes button{margin:0;padding:9px 5px;font-size:.88rem}#cent .cc2lensModes .active{outline:2px solid #2f65ff;background:#343b49}
@@ -98,7 +98,7 @@ function install(){
   <div class="cc2corners" id="cc2cornerBtns"></div>
   <div class="cc2wrap"><canvas id="cc2canvasA" class="cc2canvas"></canvas><canvas id="cc2lensA" class="cc2lens" width="720" height="720"></canvas></div>
   <div class="cc2lensModes"><button type="button" class="sec active" data-z="context">Contesto</button><button type="button" class="sec" data-z="medium">Medio</button><button type="button" class="sec" data-z="precision">Precisione</button></div>
-  <div class="cc2help"><b>Angoli arrotondati:</b> non puntare sulla curva. Metti il centro dove i due bordi rettilinei, prolungati idealmente, si incontrerebbero. Usa “Contesto” per vedere entrambi i lati.</div>
+  <div class="cc2help"><b>Angoli arrotondati:</b> trascina il punto: la lente compare accanto al dito e lo segue. Metti il centro dove i due bordi rettilinei, prolungati idealmente, si incontrerebbero. Usa “Contesto” per vedere entrambi i lati.</div>
   <div class="cc2row"><button class="sec" id="cc2Auto">◎ Rileva automaticamente</button><button class="sec" id="cc2Clear">Azzera 4 punti</button></div>
   <button id="cc2Warp" disabled>Raddrizza e passa alla centratura</button>
 </section>
@@ -174,7 +174,47 @@ function renderA(){
 function renderCornerButtons(){
   const names=['1 alto sinistra','2 alto destra','3 basso destra','4 basso sinistra'];
   el('cc2cornerBtns').innerHTML=names.map((n,i)=>'<button type="button" class="sec '+(i===state.selected?'cc2sel':'')+'" data-i="'+i+'">'+(state.points[i]?'✓ ':'')+n+'</button>').join('');
-  el('cc2cornerBtns').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.selected=+b.dataset.i;renderCornerButtons();renderA();if(state.points[state.selected])drawLensA(state.points[state.selected])});
+  el('cc2cornerBtns').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.selected=+b.dataset.i;renderCornerButtons();renderA();var l=el('cc2lensA');if(state.points[state.selected]&&l&&l.style.display==='block')drawLensA(state.points[state.selected])});
+}
+function cancelLensHide(){
+  if(state.lensHideTimer){clearTimeout(state.lensHideTimer);state.lensHideTimer=null}
+}
+function scheduleLensHide(id,delay){
+  cancelLensHide();
+  state.lensHideTimer=setTimeout(function(){
+    var l=el(id);if(l)l.style.display='none';
+    state.lensHideTimer=null;
+  },delay==null?650:delay);
+}
+function positionLensNearPointer(l,e){
+  if(!l||!e)return;
+  cancelLensHide();
+  state.lastPointer={x:e.clientX,y:e.clientY};
+
+  // Misura reale dopo averla resa visibile.
+  l.style.display='block';
+  l.style.visibility='hidden';
+  l.style.left='0px';l.style.top='0px';
+  var r=l.getBoundingClientRect();
+  var lw=r.width||200,lh=r.height||200;
+  var vw=window.innerWidth||document.documentElement.clientWidth||360;
+  var vh=window.innerHeight||document.documentElement.clientHeight||640;
+  var gap=24,edge=8;
+
+  // Vicino al dito, ma sul lato opposto rispetto alla metà dello schermo.
+  var left=e.clientX<vw/2 ? e.clientX+gap : e.clientX-lw-gap;
+
+  // Preferisci sopra al dito; se non c'è spazio passa sotto.
+  var top=e.clientY-lh-gap;
+  if(top<edge)top=e.clientY+gap;
+  if(top+lh>vh-edge)top=Math.max(edge,vh-lh-edge);
+
+  left=clamp(left,edge,Math.max(edge,vw-lw-edge));
+  top=clamp(top,edge,Math.max(edge,vh-lh-edge));
+
+  l.style.left=Math.round(left)+'px';
+  l.style.top=Math.round(top)+'px';
+  l.style.visibility='visible';
 }
 function lensCropSize(){
   var base=Math.min(state.source.width,state.source.height);
@@ -222,9 +262,8 @@ function drawLensA(p){
   x.strokeStyle='#2ee66b';x.lineWidth=3;x.setLineDash([]);
   x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();
   x.fillStyle='#ffd322';x.beginPath();x.arc(l.width/2,l.height/2,7,0,Math.PI*2);x.fill();
-  l.style.display='block';
 }
-function hideLensA(){el('cc2lensA').style.display='none'}
+function hideLensA(){cancelLensHide();el('cc2lensA').style.display='none'}
 
 
 function nextFrame(){
@@ -405,10 +444,21 @@ function bindA(){
     let near=-1,best=Infinity;state.points.forEach((q,i)=>{if(q){const d=dist(q,p);if(d<best){best=d;near=i}}});
     const threshold=Math.max(state.source.width,state.source.height)*.045;
     if(near>=0&&best<threshold)state.selected=near;
-    state.points[state.selected]=p;state.editingVersion++;dragging=true;renderCornerButtons();renderA();drawLensA(p)
+    state.points[state.selected]=p;state.editingVersion++;dragging=true;
+    renderCornerButtons();renderA();drawLensA(p);positionLensNearPointer(el('cc2lensA'),e);
   };
-  cv.onpointermove=e=>{if(!dragging)return;const p=sourceToCanvasPoint(cv,e);state.points[state.selected]=p;renderA();drawLensA(p)};
-  const up=()=>{if(!dragging)return;dragging=false;saveState();renderCornerButtons();renderA();if(state.points[state.selected])drawLensA(state.points[state.selected])};
+  cv.onpointermove=e=>{
+    if(!dragging)return;
+    const p=sourceToCanvasPoint(cv,e);state.points[state.selected]=p;
+    renderA();drawLensA(p);positionLensNearPointer(el('cc2lensA'),e);
+  };
+  const up=e=>{
+    if(!dragging)return;
+    dragging=false;saveState();renderCornerButtons();renderA();
+    if(state.points[state.selected])drawLensA(state.points[state.selected]);
+    if(e)positionLensNearPointer(el('cc2lensA'),e);
+    scheduleLensHide('cc2lensA',750);
+  };
   cv.onpointerup=up;cv.onpointercancel=up;
 }
 
@@ -474,7 +524,7 @@ function renderLineButtons(){
 function drawLensB(p){
   const l=el('cc2lensB'),x=l.getContext('2d'),W=state.rectified.width,H=state.rectified.height,S=72;
   const sx=clamp(p.x-S/2,0,W-S),sy=clamp(p.y-S/2,0,H-S);x.clearRect(0,0,l.width,l.height);x.drawImage(state.rectified,sx,sy,S,S,0,0,l.width,l.height);
-  x.strokeStyle='#2188ff';x.lineWidth=3;x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();x.fillStyle='#ffd322';x.beginPath();x.arc(l.width/2,l.height/2,7,0,Math.PI*2);x.fill();l.style.display='block';
+  x.strokeStyle='#2188ff';x.lineWidth=3;x.beginPath();x.moveTo(l.width/2,0);x.lineTo(l.width/2,l.height);x.moveTo(0,l.height/2);x.lineTo(l.width,l.height/2);x.stroke();x.fillStyle='#ffd322';x.beginPath();x.arc(l.width/2,l.height/2,7,0,Math.PI*2);x.fill();
 }
 function hideLensB(){el('cc2lensB').style.display='none'}
 function updateResult(){
@@ -485,9 +535,21 @@ function updateResult(){
 }
 function bindB(){
   const cv=el('cc2canvasB');let drag=false;
-  cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);drag=true;placeLine(rectToCanvasPoint(cv,e));drawLensB(rectToCanvasPoint(cv,e))};
-  cv.onpointermove=e=>{if(!drag)return;const p=rectToCanvasPoint(cv,e);placeLine(p);drawLensB(p)};
-  const up=()=>{drag=false;hideLensB();updateResult()};cv.onpointerup=up;cv.onpointercancel=up;
+  cv.onpointerdown=e=>{
+    cv.setPointerCapture(e.pointerId);drag=true;
+    const p=rectToCanvasPoint(cv,e);placeLine(p);drawLensB(p);positionLensNearPointer(el('cc2lensB'),e);
+  };
+  cv.onpointermove=e=>{
+    if(!drag)return;
+    const p=rectToCanvasPoint(cv,e);placeLine(p);drawLensB(p);positionLensNearPointer(el('cc2lensB'),e);
+  };
+  const up=e=>{
+    if(!drag)return;
+    drag=false;updateResult();
+    if(e)positionLensNearPointer(el('cc2lensB'),e);
+    scheduleLensHide('cc2lensB',650);
+  };
+  cv.onpointerup=up;cv.onpointercancel=up;
 }
 function placeLine(p){
   const k=state.lineSel,W=state.rectified.width,H=state.rectified.height;
@@ -503,6 +565,7 @@ function useForOCR(){
   close();
 }
 function close(){
+  hideLensA();hideLensB();
   const p=state.prevView||'fine';el('cent').classList.add('hide');const x=el(p);if(x)x.classList.remove('hide');
 }
 function bind(){
@@ -511,7 +574,7 @@ function bind(){
     b.onclick=function(){
       state.lensMode=b.dataset.z||'context';
       renderLensModes();
-      if(state.points[state.selected])drawLensA(state.points[state.selected]);
+      var l=el('cc2lensA');if(state.points[state.selected]&&l&&l.style.display==='block')drawLensA(state.points[state.selected]);
     };
   });
   renderLensModes();
@@ -519,7 +582,7 @@ function bind(){
   el('cc2Auto').onclick=()=>autoDetect(true);
   el('cc2Clear').onclick=()=>{state.points=[null,null,null,null];state.selected=0;state.editingVersion++;renderCornerButtons();renderA();setStatus('cc2Astatus','Punti azzerati. Tocca i quattro angoli fisici della carta.')};
   el('cc2Warp').onclick=warp;
-  el('cc2BackA').onclick=()=>{showOnly('A');renderA()};
+  el('cc2BackA').onclick=()=>{hideLensB();showOnly('A');renderA()};
   el('cc2AutoLines').onclick=()=>{state.lines=autoInnerLines(state.rectified);renderB();updateResult();setStatus('cc2Bstatus','Linee ricalcolate automaticamente. Controllale visivamente.','ok')};
   el('cc2UseOCR').onclick=useForOCR;
   el('cc2Exit').onclick=close;
